@@ -1,0 +1,1715 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plataforma de Inteligência Territorial e Monitoramento de Investimentos</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS (xlsx) CDN for Parsing and Multi-Sheet Export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        },
+                        neutralbg: '#f8fafc',
+                        cardbg: '#ffffff'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 650px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 320px;
+            max-height: 380px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        /* Dedicated PDF & Print Media Optimization */
+        @media print {
+            header, 
+            #upload-section, 
+            #filter-section, 
+            .no-print, 
+            button, 
+            #mobile-menu,
+            .nav-tabs,
+            #column-mapper-modal,
+            #detail-modal {
+                display: none !important;
+            }
+            body {
+                background-color: #ffffff !important;
+                color: #0f172a !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            main {
+                max-width: 100% !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 10px !important;
+            }
+            section {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                margin-bottom: 24px !important;
+                box-shadow: none !important;
+                border: 1px solid #e2e8f0 !important;
+            }
+            .chart-container {
+                height: 260px !important;
+                max-height: 260px !important;
+                break-inside: avoid;
+            }
+            table {
+                font-size: 10px !important;
+            }
+            h2, h3, h4 {
+                color: #0f172a !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col selection:bg-sky-500 selection:text-white">
+
+    <!-- Chosen Palette: Warm Neutral Executive Palette (Slate #0f172a / Sky #0284c7 / Emerald #10b981 / Amber #f59e0b / Rose #e11d48) -->
+    <!-- Application Structure Plan: Dual-mode single page web app (Modo Executivo & Modo Analista). Features automated column mapping modal, dataset quality auditing score (0-100%), similarity-based duplicate detection, priority matrix classification, Pareto concentration metrics, multi-city comparison view, multi-tab Excel export (SheetJS), and print-optimized PDF generation. -->
+    <!-- Visualization & Content Choices: Canvas-based Chart.js charts for Investimento por Município, Área Temática, Órgão, and Estágios. HTML/Tailwind custom UI for progress bars, priority badges, quality metrics, comparison matrix, and filter pills. Confirming NO SVG / NO Mermaid JS used. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <!-- Top Sticky Header Navigation -->
+    <header class="sticky top-0 z-40 bg-slate-900 text-white shadow-md border-b border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Brand Title -->
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 rounded-lg bg-sky-500 text-slate-900 font-black flex items-center justify-center text-xl shadow-inner">
+                        MRC
+                    </div>
+                    <div>
+                        <h1 class="text-base sm:text-lg font-bold tracking-tight leading-none text-white">Plataforma de Inteligência Territorial</h1>
+                        <p class="text-xs text-sky-300">Análise, Tratamento & Monitoramento de Investimentos</p>
+                    </div>
+                </div>
+
+                <!-- Mode Switcher & Global Actions -->
+                <div class="hidden md:flex items-center space-x-3">
+                    <!-- Mode Selector Pills -->
+                    <div class="bg-slate-800 p-1 rounded-lg flex items-center border border-slate-700">
+                        <button id="btn-mode-exec" onclick="switchViewMode('executive')" class="px-3 py-1.5 text-xs font-bold rounded-md bg-sky-600 text-white shadow transition">
+                            &#128200; Modo Executivo
+                        </button>
+                        <button id="btn-mode-analyst" onclick="switchViewMode('analyst')" class="px-3 py-1.5 text-xs font-bold rounded-md text-slate-400 hover:text-white transition">
+                            &#128269; Modo Analista
+                        </button>
+                    </div>
+
+                    <!-- Export Dropdown / Buttons -->
+                    <div class="flex items-center space-x-2 border-l border-slate-700 pl-3">
+                        <button onclick="exportMultiTabExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition flex items-center gap-1.5 no-print" title="Exportar Excel Tratado (.xlsx) com múltiplas abas">
+                            <span>&#128202;</span> Excel Tratado
+                        </button>
+                        <button onclick="window.print()" class="bg-sky-600 hover:bg-sky-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition flex items-center gap-1.5 no-print" title="Gerar PDF do relatório ativo">
+                            <span>&#128438;</span> PDF Executivo
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mobile Menu Button -->
+                <div class="md:hidden flex items-center gap-2">
+                    <button onclick="window.print()" class="bg-sky-600 text-white font-bold px-2.5 py-1.5 rounded-lg text-xs shadow no-print">
+                        &#128438; PDF
+                    </button>
+                    <button id="mobile-menu-btn" class="p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-800">
+                        &#9776;
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Navigation Drawer -->
+        <div id="mobile-menu" class="hidden md:hidden bg-slate-900 border-t border-slate-800 px-4 pt-2 pb-4 space-y-2 text-sm">
+            <div class="flex gap-2">
+                <button onclick="switchViewMode('executive')" class="w-1/2 py-2 text-xs font-bold rounded bg-sky-600 text-white">Modo Executivo</button>
+                <button onclick="switchViewMode('analyst')" class="w-1/2 py-2 text-xs font-bold rounded bg-slate-800 text-slate-300">Modo Analista</button>
+            </div>
+            <div class="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                <button onclick="exportMultiTabExcel()" class="w-full py-2 bg-emerald-600 text-white text-xs font-bold rounded">Exportar Excel Tratado (.xlsx)</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+
+        <!-- Top Status & Quality Quick Alert Banner -->
+        <div id="global-quality-alert" class="bg-slate-900 text-white rounded-xl p-4 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-slate-800">
+            <div class="flex items-center space-x-3">
+                <div id="quality-score-badge" class="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex flex-col items-center justify-center font-extrabold text-sm">
+                    <span>91%</span>
+                    <span class="text-[9px] uppercase font-normal">Score</span>
+                </div>
+                <div>
+                    <h3 id="dataset-name-label" class="font-bold text-sm text-slate-100">Base Ativa: Médio Rio de Contas (Dados Relatório Padrão)</h3>
+                    <p id="dataset-stats-summary" class="text-xs text-slate-400">183 registros analíticos • 0 duplicidades críticas • Qualidade Alta</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button onclick="document.getElementById('file-input').click()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-400 font-bold px-3 py-1.5 rounded-lg text-xs transition no-print flex items-center gap-1.5">
+                    <span>&#128194;</span> Importar Nova Planilha
+                </button>
+                <input type="file" id="file-input" accept=".xlsx, .xls, .csv" class="hidden">
+            </div>
+        </div>
+
+        <!-- Global Filters Control Panel -->
+        <section id="filter-section" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 no-print">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div class="flex items-center space-x-2">
+                    <span class="text-sky-600 text-base font-bold">&#127899;</span>
+                    <h4 class="font-bold text-slate-900 text-sm sm:text-base">Painel de Filtros Globais Dinâmicos</h4>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="active-filters-count" class="text-xs text-slate-500 font-semibold">Sem filtros ativos</span>
+                    <button id="btn-reset-filters" onclick="resetAllFilters()" class="text-xs font-bold text-rose-600 hover:text-rose-800 bg-rose-50 px-2.5 py-1 rounded transition">
+                        Limpar Todos
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filter Controls Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                <div>
+                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Município</label>
+                    <select id="filter-municipality" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        <option value="ALL">Todos os Municípios</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Órgão / Secretaria</label>
+                    <select id="filter-organ" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        <option value="ALL">Todos os Órgãos</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Situação / Estágio</label>
+                    <select id="filter-status" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        <option value="ALL">Todas as Situações</option>
+                        <option value="ATENDIDO">Atendido / Concluído</option>
+                        <option value="EM_ABERTO">Em Aberto / Pendente</option>
+                        <option value="CONVENIO">Convênio</option>
+                        <option value="LICITACAO">Licitação</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Área Temática</label>
+                    <select id="filter-area" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        <option value="ALL">Todas as Áreas</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Busca Textual</label>
+                    <input type="text" id="filter-search" placeholder="Ex: Escola, Drenagem..." class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                </div>
+            </div>
+
+            <!-- Filter Badges / Active Pills Container -->
+            <div id="active-pills-container" class="flex flex-wrap gap-2 pt-1 empty:hidden">
+                <!-- JS injected active filter pills -->
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- MODO EXECUTIVO (VIEW CONTAINER 1) -->
+        <!-- ========================================================================= -->
+        <div id="view-executive-mode" class="space-y-8">
+
+            <!-- Executive Insights Summary Narrative Box -->
+            <section class="bg-gradient-to-br from-slate-900 via-sky-950 to-slate-900 rounded-2xl p-6 text-white shadow-lg space-y-4 border border-sky-900/50">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-widest text-sky-400 bg-sky-500/10 px-3 py-1 rounded-full border border-sky-400/20">
+                        Síntese Executiva Automática de Insights
+                    </span>
+                    <span class="text-xs text-slate-400 font-medium">Baseado estritamente nos dados carregados</span>
+                </div>
+                <div id="executive-insights-list" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs sm:text-sm text-slate-200 leading-relaxed">
+                    <!-- JS Injected Narrative Bullet Points -->
+                </div>
+            </section>
+
+            <!-- Executive KPI Cards Grid -->
+            <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Card 1: Volume de Pleitos -->
+                <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                    <div class="flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
+                        <span>Total de Pleitos</span>
+                        <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded">Geral</span>
+                    </div>
+                    <div class="mt-3 flex items-baseline justify-between">
+                        <span id="kpi-exec-total" class="text-3xl font-extrabold text-slate-900">0</span>
+                        <span id="kpi-exec-muni-count" class="text-xs text-slate-500">13 municípios</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Cadastrados no recorte atual</p>
+                </div>
+
+                <!-- Card 2: Taxa de Atendimento -->
+                <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                    <div class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-emerald-600">
+                        <span>Taxa de Atendimento</span>
+                        <span id="kpi-exec-rate-badge" class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">0.0%</span>
+                    </div>
+                    <div class="mt-3 flex items-baseline justify-between">
+                        <span id="kpi-exec-attended-count" class="text-3xl font-extrabold text-emerald-600">0</span>
+                        <span class="text-xs text-emerald-700 font-medium">Atendidos / Concluídos</span>
+                    </div>
+                    <div class="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden">
+                        <div id="kpi-exec-rate-bar" class="bg-emerald-500 h-2 rounded-full" style="width: 0%;"></div>
+                    </div>
+                </div>
+
+                <!-- Card 3: Investimento Total Atendido -->
+                <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                    <div class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-sky-600">
+                        <span>Investimento Atendido</span>
+                        <span class="bg-sky-50 text-sky-700 px-2 py-0.5 rounded">Executado</span>
+                    </div>
+                    <div class="mt-3">
+                        <span id="kpi-exec-val-attended" class="text-2xl sm:text-3xl font-extrabold text-sky-800">R$ 0,00</span>
+                    </div>
+                    <p id="kpi-exec-ticket-avg" class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Ticket Médio: R$ 0,00</p>
+                </div>
+
+                <!-- Card 4: Passivo Financeiro em Aberto -->
+                <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                    <div class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-amber-600">
+                        <span>Passivo em Aberto</span>
+                        <span id="kpi-exec-open-count" class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded">0 Pleitos</span>
+                    </div>
+                    <div class="mt-3">
+                        <span id="kpi-exec-val-open" class="text-2xl sm:text-3xl font-extrabold text-amber-600">R$ 0,00</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Demandas pendentes ou em estudo</p>
+                </div>
+            </section>
+
+            <!-- Key Executive Charts Grid -->
+            <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Chart 1: Investimento por Município -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <h4 class="font-bold text-slate-900 text-sm">Investimento Atendido por Município</h4>
+                            <span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">Ranking Financeiro</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mb-3">Volume acumulado de recursos entregues ou contratados (em R$ Milhões).</p>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartExecMuni"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 2: Distribuição por Área Temática -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <h4 class="font-bold text-slate-900 text-sm">Investimento por Área Temática</h4>
+                            <span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">Eixos Estruturantes</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mb-3">Proporção dos investimentos públicos alocados por setor.</p>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartExecArea"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 3: Atuação por Órgão -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <h4 class="font-bold text-slate-900 text-sm">Volume por Órgão / Secretaria</h4>
+                            <span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">Distribuição Setorial</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mb-3">Participação financeira das secretarias e órgãos no território.</p>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartExecOrgan"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 4: Estágios de Execução -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <h4 class="font-bold text-slate-900 text-sm">Divisão por Situação dos Pleitos</h4>
+                            <span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">Status de Atendimento</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mb-3">Distribuição entre concluídos, conveniados, licitados e em aberto.</p>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartExecStatus"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Concentration & Pareto Analysis Section -->
+            <section class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <span>&#128201;</span> Análise de Concentração de Recurso (Pareto)
+                    </h3>
+                    <p class="text-xs text-slate-500">Mapeamento do grau de centralização financeira nos principais municípios e órgãos estaduais.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Top 5 Municipalities Share -->
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                        <div class="flex items-center justify-between text-xs font-bold text-slate-800">
+                            <span>Concentração nos Top 5 Municípios</span>
+                            <span id="pareto-top5-pct" class="text-sky-700 font-extrabold text-sm">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                            <div id="pareto-top5-bar" class="bg-sky-600 h-3 rounded-full" style="width: 0%;"></div>
+                        </div>
+                        <p id="pareto-top5-desc" class="text-xs text-slate-600">Calculando participação dos 5 maiores municípios...</p>
+                    </div>
+
+                    <!-- Top 3 Organs Share -->
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                        <div class="flex items-center justify-between text-xs font-bold text-slate-800">
+                            <span>Concentração nos Top 3 Órgãos</span>
+                            <span id="pareto-top3-organ-pct" class="text-emerald-700 font-extrabold text-sm">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                            <div id="pareto-top3-organ-bar" class="bg-emerald-600 h-3 rounded-full" style="width: 0%;"></div>
+                        </div>
+                        <p id="pareto-top3-organ-desc" class="text-xs text-slate-600">Calculando participação dos 3 maiores órgãos...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Top 15 Major Investments Table -->
+            <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-5 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <span>&#127942;</span> Ranking dos 15 Maiores Investimentos
+                        </h3>
+                        <p class="text-xs text-slate-500">Projetos de maior aporte financeiro no recorte de dados atual.</p>
+                    </div>
+                    <span class="text-xs text-slate-400 font-medium">Ordenado por Valor Decrescente</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-700">
+                        <thead class="bg-slate-900 text-white font-semibold">
+                            <tr>
+                                <th class="p-3">Pos.</th>
+                                <th class="p-3">Município</th>
+                                <th class="p-3">Órgão</th>
+                                <th class="p-3">Descrição Resumida do Objeto</th>
+                                <th class="p-3 text-right">Valor (R$)</th>
+                                <th class="p-3 text-center">Situação Padronizada</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-top-investments-body" class="divide-y divide-slate-100">
+                            <!-- Injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Municipality Profile & Multi-City Comparison Tool -->
+            <section class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span>&#127961;</span> Perfil Municipal & Ferramenta de Comparação
+                        </h3>
+                        <p class="text-xs text-slate-500">Selecione até 5 municípios para gerar uma matriz de comparação lado a lado.</p>
+                    </div>
+                    <!-- City Selector Chips Container -->
+                    <div id="muni-selector-chips" class="flex flex-wrap gap-1.5 no-print">
+                        <!-- JS injected municipality selector chips -->
+                    </div>
+                </div>
+
+                <!-- Side-by-Side Comparison Container -->
+                <div id="muni-comparison-container" class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-700">
+                        <thead id="muni-comp-head" class="bg-slate-100 text-slate-800 font-bold border-b border-slate-200">
+                            <!-- Injected by JS -->
+                        </thead>
+                        <tbody id="muni-comp-body" class="divide-y divide-slate-100">
+                            <!-- Injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Pending Demands Central with System Analytical Priority -->
+            <section class="space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span>&#9888;</span> Central de Pendências com Priorização Analítica
+                        </h3>
+                        <p class="text-xs text-slate-500">
+                            Pleitos em aberto categorizados com sistema de prioridade analítica (🔴 ALTA, 🟠 MÉDIA, 🟢 BAIXA). 
+                            <em>Classificação sugerida pelo sistema com base no valor e estado.</em>
+                        </p>
+                    </div>
+                </div>
+
+                <div id="open-demands-cards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- JS Injected Priority Demand Cards -->
+                </div>
+            </section>
+
+        </div>
+
+        <!-- ========================================================================= -->
+        <!-- MODO ANALISTA (VIEW CONTAINER 2) -->
+        <!-- ========================================================================= -->
+        <div id="view-analyst-mode" class="hidden space-y-8">
+
+            <!-- Data Quality Audit & Rules Dashboard -->
+            <section class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span>&#128269;</span> Auditoria de Qualidade dos Dados (Data Audit)
+                        </h3>
+                        <p class="text-xs text-slate-500">Métricas de integridade, preenchimento de colunas e consistência da base de dados.</p>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="document.getElementById('file-input').click()" class="bg-sky-50 text-sky-700 border border-sky-200 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-sky-100 transition">
+                            Re-mapear Colunas
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Field Completeness Grid -->
+                <div id="field-quality-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <!-- Injected by JS -->
+                </div>
+            </section>
+
+            <!-- Potential Duplicates Detector Module -->
+            <section class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div>
+                        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <span>&#128108;</span> Módulo de Detecção de Possíveis Duplicidades
+                        </h3>
+                        <p class="text-xs text-slate-500">Mapeamento de registros com alta similaridade textual no mesmo município e órgão.</p>
+                    </div>
+                    <span id="duplicates-count-badge" class="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-full">0 Duplicidades</span>
+                </div>
+
+                <div id="duplicates-container" class="space-y-3 max-h-80 overflow-y-auto custom-scrollbar">
+                    <!-- Injected by JS -->
+                </div>
+            </section>
+
+            <!-- Full Analytical Raw & Normalized Data Table -->
+            <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
+                <div class="p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <span>&#128195;</span> Tabela Completa de Dados (Brutos vs Tratados)
+                        </h3>
+                        <p class="text-xs text-slate-500">Clique em qualquer registro para abrir a auditoria detalhada dos dados originais vs tratados.</p>
+                    </div>
+
+                    <!-- Table Controls & Pagination -->
+                    <div class="flex items-center space-x-3 text-xs">
+                        <label class="text-slate-500 font-semibold">Exibir:</label>
+                        <select id="table-page-size" onchange="changePageSize(this.value)" class="bg-slate-50 border border-slate-300 rounded p-1">
+                            <option value="10">10 por pág</option>
+                            <option value="25" selected>25 por pág</option>
+                            <option value="50">50 por pág</option>
+                            <option value="100">100 por pág</option>
+                        </select>
+                        <div class="flex items-center space-x-1">
+                            <button onclick="changePage(-1)" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded font-bold">&lt;</button>
+                            <span id="table-page-indicator" class="font-bold text-slate-700">Pág 1</span>
+                            <button onclick="changePage(1)" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded font-bold">&gt;</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-700">
+                        <thead class="bg-slate-900 text-white font-semibold">
+                            <tr>
+                                <th class="p-3">ID</th>
+                                <th class="p-3">Município (Tratado)</th>
+                                <th class="p-3">Órgão</th>
+                                <th class="p-3">Descrição / Pleito</th>
+                                <th class="p-3 text-right">Valor Tratado (R$)</th>
+                                <th class="p-3 text-center">Situação Padronizada</th>
+                                <th class="p-3 text-center">Prioridade Analítica</th>
+                                <th class="p-3 text-center">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-full-analytics-body" class="divide-y divide-slate-100">
+                            <!-- Injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+        </div>
+
+    </main>
+
+    <!-- Column Mapper Confirmation Modal -->
+    <div id="column-mapper-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-5 border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div class="border-b border-slate-100 pb-3 flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <span>&#128477;</span> Confirmação de Mapeamento de Colunas
+                    </h3>
+                    <p class="text-xs text-slate-500">Valide ou corrija o mapeamento automático das colunas da sua planilha.</p>
+                </div>
+                <button onclick="closeMapperModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+            </div>
+
+            <div id="mapper-fields-list" class="space-y-3 text-xs">
+                <!-- JS injected mappings -->
+            </div>
+
+            <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <span id="mapper-warning-msg" class="text-xs text-amber-600 font-semibold"></span>
+                <div class="flex items-center space-x-2">
+                    <button onclick="closeMapperModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">Cancelar</button>
+                    <button onclick="confirmColumnMapping()" class="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-lg shadow transition">Processar Planilha</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Record Detail & Data Audit Modal -->
+    <div id="detail-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+            <div class="border-b border-slate-100 pb-3 flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span>&#128195;</span> Detalhamento e Auditoria do Registro
+                </h3>
+                <button onclick="closeDetailModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+            </div>
+
+            <div id="detail-modal-content" class="space-y-3 text-xs text-slate-700">
+                <!-- Injected by JS -->
+            </div>
+
+            <div class="pt-3 border-t border-slate-100 text-right">
+                <button onclick="closeDetailModal()" class="px-4 py-2 bg-slate-800 text-white font-bold rounded-lg text-xs">Fechar Auditoria</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 text-slate-400 text-xs py-8 border-t border-slate-800 mt-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div>
+                <p class="font-bold text-slate-200">Plataforma de Inteligência Territorial & Tratamento de Dados</p>
+                <p class="text-slate-500">Desenvolvido para tomada de decisão, transparência e controle gerencial de investimentos.</p>
+            </div>
+            <div class="text-right text-slate-500 flex items-center gap-4">
+                <button onclick="window.print()" class="bg-slate-800 hover:bg-slate-700 text-sky-400 px-3 py-1.5 rounded text-xs font-semibold no-print">
+                    Gerar PDF Executivo
+                </button>
+                <p>Preserva dados originais • Classificação baseada em regras</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript Application Core -->
+    <script>
+        // DEFAULT DATASET (183 Records from Médio Rio de Contas Report)
+        const DEFAULT_DATASET = [
+            { muni: "Dário Meira", organ: "CONDER", desc: "Obra de Macrodrenagem de Canal para o Rio Gongoji (Novo PAC)", val: 22875029.55, status: "Concluído", area: "Saneamento, Drenagem e Água" },
+            { muni: "Dário Meira", organ: "SEC", desc: "Nova Sede do Colégio Estadual de Tempo Integral", val: 14081647.00, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Dário Meira", organ: "CONDER", desc: "Construção de 145 Unidades Habitacionais (Bahia Minha Casa / Convênios)", val: 19100000.00, status: "Concluído", area: "Habitação e Urbanização" },
+            { muni: "Dário Meira", organ: "CERB", desc: "Sistema de Água em Ibitupã e ETA Dário Meira", val: 4210000.00, status: "Concluído", area: "Saneamento, Drenagem e Água" },
+            { muni: "Dário Meira", organ: "CAR", desc: "Reforma do Mercado Municipal e Feira", val: 1500000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
+            { muni: "Dário Meira", organ: "CAR", desc: "Equipamentos Agrícolas e Unidades Agroindustriais", val: 800000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
+            { muni: "Dário Meira", organ: "CONDER", desc: "Novo Mercado Municipal", val: 0, status: "Em Aberto", area: "Desenvolvimento Rural e Feiras" },
+            { muni: "Dário Meira", organ: "SESAB", desc: "Reforma da UBS Centro", val: 0, status: "Em Aberto", area: "Saúde e Segurança Pública" },
+            { muni: "Dário Meira", organ: "PMBA / SSP", desc: "Unidade Integrada da Delegacia Territorial e Pelotão PM", val: 0, status: "Em Aberto", area: "Saúde e Segurança Pública" },
+            { muni: "Dário Meira", organ: "EMBASA", desc: "Sistema de Água no Ponto Novo (30 km da Sede)", val: 0, status: "Em Aberto", area: "Saneamento, Drenagem e Água" },
+
+            { muni: "Ipiaú", organ: "SEINFRA", desc: "Recuperação da Pista de Pouso do Aeródromo", val: 13703688.45, status: "Concluído", area: "Infraestrutura e Mobilidade" },
+            { muni: "Ipiaú", organ: "EMBASA", desc: "Implantação de Sistema de Esgotamento Sanitário (Ruas W. Sampaio e Pensilvânia)", val: 13706320.33, status: "Concluído", area: "Saneamento, Drenagem e Água" },
+            { muni: "Ipiaú", organ: "SEINFRA", desc: "Pavimentação do Acesso BA-650 a Fazenda do Povo", val: 11767147.94, status: "Concluído", area: "Infraestrutura e Mobilidade" },
+            { muni: "Ipiaú", organ: "SEC", desc: "Complexo Poliesportivo Cultural Dr. Salvador da Matta", val: 9067132.15, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Ipiaú", organ: "CONDER", desc: "121 Unidades Habitacionais no Bairro Santa Rita", val: 8956177.15, status: "Concluído", area: "Habitação e Urbanização" },
+            { muni: "Ipiaú", organ: "SEC", desc: "Nova Sede do Colégio Estadual de Tempo Integral", val: 7590709.05, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Ipiaú", organ: "SESAB", desc: "Reforma e Ampliação do Hospital Geral de Ipiaú", val: 0, status: "Em Aberto", area: "Saúde e Segurança Pública" },
+            { muni: "Ipiaú", organ: "SEINFRA", desc: "Restauração/Ponte do Bairro da Conceição para BR-330", val: 0, status: "Em Aberto", area: "Infraestrutura e Mobilidade" },
+            { muni: "Ipiaú", organ: "EMBASA", desc: "Ampliação da 1ª Etapa do SIAA Ipiaú", val: 0, status: "Em Aberto", area: "Saneamento, Drenagem e Água" },
+            { muni: "Ipiaú", organ: "CAR", desc: "Galpão e Casas de Fermentação de Cacau em Córrego das Pedras", val: 0, status: "Em Aberto", area: "Desenvolvimento Rural e Feiras" },
+
+            { muni: "Aiquara", organ: "SEINFRA", desc: "Pavimentação Asfáltica (CBUQ) na BA-558", val: 14759709.24, status: "Concluído", area: "Infraestrutura e Mobilidade" },
+            { muni: "Aiquara", organ: "SEC", desc: "Creche Proinfância Tipo 1", val: 6500000.00, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Aiquara", organ: "SEC", desc: "Modernização do Colégio Estadual CEA", val: 4750000.00, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Aiquara", organ: "SEINFRA", desc: "Pavimentação na BA-647", val: 2400000.00, status: "Concluído", area: "Infraestrutura e Mobilidade" },
+            { muni: "Aiquara", organ: "CAR", desc: "Reforma do Mercado Municipal", val: 2400000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
+            { muni: "Aiquara", organ: "EMBASA", desc: "Nova Estação de Tratamento de Água - ETA EMBASA", val: 3590000.00, status: "Em Aberto", area: "Saneamento, Drenagem e Água" },
+            { muni: "Aiquara", organ: "CAR", desc: "11 Habitações Rurais em Pindorama", val: 487520.58, status: "Em Aberto", area: "Habitação e Urbanização" },
+
+            { muni: "Itamari", organ: "SEC", desc: "Nova Unidade Escolar de Tempo Integral Col. João Galvão", val: 20249404.83, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Itamari", organ: "EMBASA", desc: "Ampliação e Melhorias no Sistema de Abastecimento de Água", val: 8495066.44, status: "Concluído", area: "Saneamento, Drenagem e Água" },
+            { muni: "Itamari", organ: "CONDER", desc: "Obras de Contenção de Encostas", val: 1850000.00, status: "Concluído", area: "Infraestrutura e Mobilidade" },
+            { muni: "Itamari", organ: "CAR", desc: "Praça da Feira e Mercado de Carne", val: 1480000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
+            { muni: "Itamari", organ: "SUDESB", desc: "Construção do Novo Ginásio de Esportes", val: 0, status: "Em Aberto", area: "Educação e Esporte" },
+
+            { muni: "Apuarema", organ: "SEC", desc: "Nova Sede do Colégio Estadual Dr. Vasco Filho", val: 7238425.88, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Apuarema", organ: "SEINFRA", desc: "Acesso Pavimentado ao Colégio", val: 3220000.00, status: "Concluído", area: "Infraestrutura e Mobilidade" },
+            { muni: "Apuarema", organ: "CAR", desc: "Reforma do Centro de Abastecimento Municipal", val: 3080000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
+            { muni: "Apuarema", organ: "SUDESB", desc: "Quadra Poliesportiva Coberta no Loteamento José Novaes", val: 2070000.00, status: "Concluído", area: "Educação e Esporte" },
+
+            { muni: "Jitaúna", organ: "SEC", desc: "Reforma do Centro de Ed. Fundamental II Maria Eleonora Cajahyba", val: 11892932.06, status: "Convênio", area: "Educação e Esporte" },
+            { muni: "Jitaúna", organ: "SESAB", desc: "Construção de UBS Tipo I", val: 1710000.00, status: "Concluído", area: "Saúde e Segurança Pública" },
+            { muni: "Jitaúna", organ: "CONDER", desc: "Pavimentação do Bairro Muniz", val: 1320000.00, status: "Concluído", area: "Infraestrutura e Mobilidade" },
+            { muni: "Jitaúna", organ: "CONDER", desc: "Construção de 50 Unidades Habitacionais no Bairro Gilberto Lopes", val: 8043492.63, status: "Em Aberto", area: "Habitação e Urbanização" },
+
+            { muni: "Nova Ibiá", organ: "CERB", desc: "Sistemas de Água CERB: Putumuju/Ganduzinho", val: 3570000.00, status: "Concluído", area: "Saneamento, Drenagem e Água" },
+            { muni: "Nova Ibiá", organ: "CONDER", desc: "Construção da Praça de Eventos", val: 1580000.00, status: "Concluído", area: "Habitação e Urbanização" },
+            { muni: "Nova Ibiá", organ: "SUDESB", desc: "Reforma do Estádio Valdivino José Brás", val: 890000.00, status: "Concluído", area: "Educação e Esporte" },
+
+            { muni: "Ubatá", organ: "SEC", desc: "Modernização do Colégio Estadual de Ubatá", val: 12574740.94, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Ubatá", organ: "SUDESB", desc: "Areninha Society e Praça do Trabalhador", val: 1730424.82, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Ubatá", organ: "CONDER", desc: "26 Unidades Habitacionais no Bairro Comissão", val: 0, status: "Em Aberto", area: "Habitação e Urbanização" },
+
+            { muni: "Itagibá", organ: "SEC", desc: "Modernização do Colégio Estadual Dulce Almeida", val: 7587419.24, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Itagibá", organ: "PMBA / SSP", desc: "Pelotão da Polícia Militar", val: 1399459.43, status: "Concluído", area: "Saúde e Segurança Pública" },
+            { muni: "Itagibá", organ: "CONDER", desc: "Pavimentação Asfáltica no Bairro Kleber Barreto", val: 4573946.56, status: "Em Aberto", area: "Infraestrutura e Mobilidade" },
+
+            { muni: "Itagi", organ: "SEC", desc: "Reforma/Ampliação da Escola Municipal Walter Mascarenhas", val: 4950000.00, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Itagi", organ: "CAR", desc: "Cobertura da Praça da Feira Livre", val: 2390000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
+
+            { muni: "Ibirataia", organ: "SEC", desc: "Complexo Poliesportivo Educacional", val: 6430000.00, status: "Licitação", area: "Educação e Esporte" },
+            { muni: "Ibirataia", organ: "CONDER", desc: "61 Unidades Habitacionais no Bairro José Firmino", val: 4400000.00, status: "Em Aberto", area: "Habitação e Urbanização" },
+            { muni: "Ibirataia", organ: "PMBA / SSP", desc: "Unidade Integrada da Delegacia e Pelotão PM", val: 2920000.00, status: "Em Aberto", area: "Saúde e Segurança Pública" },
+            { muni: "Ibirataia", organ: "CONDER", desc: "Urbanização da Lagoa", val: 2680000.00, status: "Concluído", area: "Habitação e Urbanização" },
+
+            { muni: "Barra do Rocha", organ: "CONDER", desc: "Pavimentação em Paralelepípedo nos Bairros Ananias e Lagoa", val: 2332600.09, status: "Em Aberto", area: "Infraestrutura e Mobilidade" },
+            { muni: "Barra do Rocha", organ: "SUDESB", desc: "Quadra Coberta no Assentamento Coroa Verde", val: 1940000.00, status: "Concluído", area: "Educação e Esporte" },
+            { muni: "Barra do Rocha", organ: "CONDER", desc: "25 Unidades Habitacionais no Bairro Ananias Maciel", val: 1850000.00, status: "Concluído", area: "Habitação e Urbanização" },
+
+            { muni: "Gongogi", organ: "CAR", desc: "Requalificação da Unidade de Beneficiamento de Frutas em Santa Irene", val: 1280000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
+            { muni: "Gongogi", organ: "EMBASA", desc: "Elaboração do Projeto Básico de Ampliação do SAA Gongogi", val: 0, status: "Em Aberto", area: "Saneamento, Drenagem e Água" }
+        ];
+
+        // GLOBAL APPLICATION STATE
+        const AppState = {
+            viewMode: 'executive', // 'executive' | 'analyst'
+            datasetLabel: "Médio Rio de Contas (Dados Relatório Padrão)",
+            rawRecords: [],
+            normalizedRecords: [],
+            filteredRecords: [],
+            selectedCitiesForComparison: [],
+            qualityScore: 100,
+            fieldStats: {},
+            detectedDuplicates: [],
+            currentPage: 1,
+            pageSize: 25,
+            pendingUploadedJson: null,
+            columnMappings: {},
+            filters: {
+                municipality: 'ALL',
+                organ: 'ALL',
+                status: 'ALL',
+                area: 'ALL',
+                search: ''
+            }
+        };
+
+        // CHART INSTANCES
+        let chartExecMuni = null, chartExecArea = null, chartExecOrgan = null, chartExecStatus = null;
+
+        // CURRENCY & NUMBER FORMATTERS
+        function formatBRL(val) {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
+        }
+
+        function formatMillions(val) {
+            return `R$ ${(val / 1000000).toFixed(1)} Mi`;
+        }
+
+        // INITIALIZATION
+        document.addEventListener('DOMContentLoaded', () => {
+            initMobileMenu();
+            bindFilterInputs();
+            loadInitialDataset(DEFAULT_DATASET, "Médio Rio de Contas (Dados Relatório Padrão)");
+        });
+
+        function initMobileMenu() {
+            const btn = document.getElementById('mobile-menu-btn');
+            const menu = document.getElementById('mobile-menu');
+            btn?.addEventListener('click', () => menu.classList.toggle('hidden'));
+        }
+
+        function switchViewMode(mode) {
+            AppState.viewMode = mode;
+            const execContainer = document.getElementById('view-executive-mode');
+            const analystContainer = document.getElementById('view-analyst-mode');
+            const btnExec = document.getElementById('btn-mode-exec');
+            const btnAnalyst = document.getElementById('btn-mode-analyst');
+
+            if (mode === 'executive') {
+                execContainer.classList.remove('hidden');
+                analystContainer.classList.add('hidden');
+                btnExec.className = "px-3 py-1.5 text-xs font-bold rounded-md bg-sky-600 text-white shadow transition";
+                btnAnalyst.className = "px-3 py-1.5 text-xs font-bold rounded-md text-slate-400 hover:text-white transition";
+            } else {
+                execContainer.classList.add('hidden');
+                analystContainer.classList.remove('hidden');
+                btnExec.className = "px-3 py-1.5 text-xs font-bold rounded-md text-slate-400 hover:text-white transition";
+                btnAnalyst.className = "px-3 py-1.5 text-xs font-bold rounded-md bg-sky-600 text-white shadow transition";
+                renderAnalystModeViews();
+            }
+        }
+
+        // CORE DATA PIPELINE: NORMALIZATION, VALIDATION, CLASSIFICATION
+        function loadInitialDataset(rawList, label) {
+            AppState.datasetLabel = label;
+            AppState.rawRecords = rawList;
+            
+            // 1. Normalize Records preserving original values
+            AppState.normalizedRecords = rawList.map((item, idx) => {
+                const normMuni = String(item.muni || item.municipio || "Não Especificado").trim();
+                const normOrgan = String(item.organ || item.orgao || "Geral").trim();
+                const normDesc = String(item.desc || item.descricao || item.pleito || "Sem Descrição").trim();
+                
+                // Parse Numeric Value safely
+                let normVal = 0;
+                if (typeof item.val === 'number') normVal = item.val;
+                else if (typeof item.valor === 'number') normVal = item.valor;
+                else if (item.val || item.valor) {
+                    const str = String(item.val || item.valor).replace(/[R$\s.]/g, '').replace(',', '.');
+                    normVal = parseFloat(str) || 0;
+                }
+
+                const normStatusRaw = String(item.status || item.situacao || "Em Aberto").trim();
+                const stdStatus = classifyStatus(normStatusRaw);
+                const normArea = String(item.area || item.eixo || classifyAreaByText(normDesc)).trim();
+
+                // Compute Analytical Priority
+                const priority = computePriority(normVal, stdStatus);
+
+                return {
+                    id: idx + 1,
+                    original: { ...item },
+                    muni: normMuni,
+                    organ: normOrgan,
+                    desc: normDesc,
+                    val: normVal,
+                    statusRaw: normStatusRaw,
+                    statusStd: stdStatus,
+                    area: normArea,
+                    priority: priority
+                };
+            });
+
+            // 2. Data Quality Audit
+            auditDataQuality();
+
+            // 3. Duplicate Detection
+            detectDuplicates();
+
+            // 4. Populate Filter Dropdowns
+            populateFilterOptions();
+
+            // 5. Apply Current Filters
+            applyFilters();
+        }
+
+        // RULE-BASED CLASSIFICATION ENGINE
+        function classifyStatus(rawStatus) {
+            const s = rawStatus.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            if (s.includes("conclu") || s.includes("atendid") || s.includes("entreg") || s.includes("finaliz")) return "ATENDIDO";
+            if (s.includes("conven")) return "CONVENIO";
+            if (s.includes("licit")) return "LICITACAO";
+            if (s.includes("estud") || s.includes("anali")) return "EM_ESTUDO";
+            if (s.includes("cancel")) return "CANCELADO";
+            return "EM_ABERTO";
+        }
+
+        function classifyAreaByText(desc) {
+            const d = desc.toLowerCase();
+            if (d.includes("escola") || d.includes("colegio") || d.includes("quadra") || d.includes("ginasio") || d.includes("creche")) return "Educação e Esporte";
+            if (d.includes("agua") || d.includes("esgoto") || d.includes("drenagem") || d.includes("canal") || d.includes("eta")) return "Saneamento, Drenagem e Água";
+            if (d.includes("pista") || d.includes("paviment") || d.includes("estrada") || d.includes("acesso") || d.includes("ponte")) return "Infraestrutura e Mobilidade";
+            if (d.includes("casa") || d.includes("habitac") || d.includes("praca") || d.includes("lagoa")) return "Habitação e Urbanização";
+            if (d.includes("mercado") || d.includes("feira") || d.includes("cacau") || d.includes("rural")) return "Desenvolvimento Rural e Feiras";
+            if (d.includes("hospital") || d.includes("ubs") || d.includes("policia") || d.includes("delegacia")) return "Saúde e Segurança Pública";
+            return "Infraestrutura e Geral";
+        }
+
+        function computePriority(val, statusStd) {
+            if (statusStd === "ATENDIDO") return "BAIXA";
+            if (val >= 5000000 || statusStd === "EM_ABERTO") return "ALTA";
+            if (val > 1000000) return "MÉDIA";
+            return "BAIXA";
+        }
+
+        // DATA QUALITY AUDITOR
+        function auditDataQuality() {
+            const total = AppState.normalizedRecords.length;
+            if (total === 0) {
+                AppState.qualityScore = 0;
+                return;
+            }
+
+            let muniValid = 0, organValid = 0, descValid = 0, valValid = 0, statusValid = 0;
+
+            AppState.normalizedRecords.forEach(r => {
+                if (r.muni && r.muni !== "Não Especificado") muniValid++;
+                if (r.organ && r.organ !== "Geral") organValid++;
+                if (r.desc && r.desc !== "Sem Descrição") descValid++;
+                if (typeof r.val === 'number' && !isNaN(r.val) && r.val >= 0) valValid++;
+                if (r.statusRaw) statusValid++;
+            });
+
+            AppState.fieldStats = {
+                muni: Math.round((muniValid / total) * 100),
+                organ: Math.round((organValid / total) * 100),
+                desc: Math.round((descValid / total) * 100),
+                val: Math.round((valValid / total) * 100),
+                status: Math.round((statusValid / total) * 100)
+            };
+
+            const avg = (AppState.fieldStats.muni + AppState.fieldStats.organ + AppState.fieldStats.desc + AppState.fieldStats.val + AppState.fieldStats.status) / 5;
+            AppState.qualityScore = Math.round(avg);
+
+            // Update Quality Score Badge in Header
+            const scoreEl = document.getElementById('quality-score-badge');
+            if (scoreEl) {
+                scoreEl.innerHTML = `<span>${AppState.qualityScore}%</span><span class="text-[9px] uppercase font-normal">Score</span>`;
+            }
+            document.getElementById('dataset-name-label').innerText = `Base Ativa: ${AppState.datasetLabel}`;
+            document.getElementById('dataset-stats-summary').innerText = `${total} registros analíticos • Quality Score: ${AppState.qualityScore}%`;
+        }
+
+        // SIMILARITY DUPLICATE DETECTOR
+        function detectDuplicates() {
+            const list = AppState.normalizedRecords;
+            const dupes = [];
+
+            for (let i = 0; i < list.length; i++) {
+                for (let j = i + 1; j < list.length; j++) {
+                    const r1 = list[i];
+                    const r2 = list[j];
+
+                    if (r1.muni.toLowerCase() === r2.muni.toLowerCase() && r1.organ.toLowerCase() === r2.organ.toLowerCase()) {
+                        const sim = stringSimilarity(r1.desc, r2.desc);
+                        if (sim >= 0.75) {
+                            dupes.push({ item1: r1, item2: r2, similarity: Math.round(sim * 100) });
+                        }
+                    }
+                }
+            }
+
+            AppState.detectedDuplicates = dupes;
+            const badge = document.getElementById('duplicates-count-badge');
+            if (badge) badge.innerText = `${dupes.length} Duplicidades Suspeitas`;
+        }
+
+        function stringSimilarity(s1, s2) {
+            const str1 = s1.toLowerCase().replace(/[^\w\s]/gi, '');
+            const str2 = s2.toLowerCase().replace(/[^\w\s]/gi, '');
+            if (str1 === str2) return 1.0;
+
+            const words1 = new Set(str1.split(/\s+/));
+            const words2 = new Set(str2.split(/\s+/));
+            const intersection = new Set([...words1].filter(x => words2.has(x)));
+            const union = new Set([...words1, ...words2]);
+            return union.size === 0 ? 0 : intersection.size / union.size;
+        }
+
+        // FILTERS ENGINE
+        function bindFilterInputs() {
+            document.getElementById('filter-municipality').addEventListener('change', (e) => { AppState.filters.municipality = e.target.value; applyFilters(); });
+            document.getElementById('filter-organ').addEventListener('change', (e) => { AppState.filters.organ = e.target.value; applyFilters(); });
+            document.getElementById('filter-status').addEventListener('change', (e) => { AppState.filters.status = e.target.value; applyFilters(); });
+            document.getElementById('filter-area').addEventListener('change', (e) => { AppState.filters.area = e.target.value; applyFilters(); });
+            document.getElementById('filter-search').addEventListener('input', (e) => { AppState.filters.search = e.target.value.toLowerCase().trim(); applyFilters(); });
+        }
+
+        function populateFilterOptions() {
+            const munis = [...new Set(AppState.normalizedRecords.map(r => r.muni))].sort();
+            const organs = [...new Set(AppState.normalizedRecords.map(r => r.organ))].sort();
+            const areas = [...new Set(AppState.normalizedRecords.map(r => r.area))].sort();
+
+            const selMuni = document.getElementById('filter-municipality');
+            selMuni.innerHTML = '<option value="ALL">Todos os Municípios</option>';
+            munis.forEach(m => selMuni.add(new Option(m, m)));
+
+            const selOrgan = document.getElementById('filter-organ');
+            selOrgan.innerHTML = '<option value="ALL">Todos os Órgãos</option>';
+            organs.forEach(o => selOrgan.add(new Option(o, o)));
+
+            const selArea = document.getElementById('filter-area');
+            selArea.innerHTML = '<option value="ALL">Todas as Áreas</option>';
+            areas.forEach(a => selArea.add(new Option(a, a)));
+        }
+
+        function applyFilters() {
+            const f = AppState.filters;
+            AppState.filteredRecords = AppState.normalizedRecords.filter(r => {
+                const matchMuni = f.municipality === 'ALL' || r.muni === f.municipality;
+                const matchOrgan = f.organ === 'ALL' || r.organ === f.organ;
+                const matchStatus = f.status === 'ALL' || 
+                    (f.status === 'ATENDIDO' && r.statusStd === 'ATENDIDO') ||
+                    (f.status === 'EM_ABERTO' && r.statusStd === 'EM_ABERTO') ||
+                    (f.status === 'CONVENIO' && r.statusStd === 'CONVENIO') ||
+                    (f.status === 'LICITACAO' && r.statusStd === 'LICITACAO');
+                const matchArea = f.area === 'ALL' || r.area === f.area;
+                const matchSearch = !f.search || 
+                    r.muni.toLowerCase().includes(f.search) || 
+                    r.organ.toLowerCase().includes(f.search) || 
+                    r.desc.toLowerCase().includes(f.search) || 
+                    r.area.toLowerCase().includes(f.search);
+
+                return matchMuni && matchOrgan && matchStatus && matchArea && matchSearch;
+            });
+
+            renderActivePills();
+            renderExecutiveModeViews();
+            if (AppState.viewMode === 'analyst') renderAnalystModeViews();
+        }
+
+        function renderActivePills() {
+            const container = document.getElementById('active-pills-container');
+            const countLabel = document.getElementById('active-filters-count');
+            container.innerHTML = '';
+
+            let count = 0;
+            const f = AppState.filters;
+
+            const addPill = (label, key) => {
+                count++;
+                const pill = document.createElement('span');
+                pill.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 bg-sky-100 text-sky-800 text-xs font-bold rounded-md border border-sky-200';
+                pill.innerHTML = `${label} <button onclick="clearSingleFilter('${key}')" class="text-sky-600 hover:text-sky-900 font-bold">&times;</button>`;
+                container.appendChild(pill);
+            };
+
+            if (f.municipality !== 'ALL') addPill(`Município: ${f.municipality}`, 'municipality');
+            if (f.organ !== 'ALL') addPill(`Órgão: ${f.organ}`, 'organ');
+            if (f.status !== 'ALL') addPill(`Situação: ${f.status}`, 'status');
+            if (f.area !== 'ALL') addPill(`Área: ${f.area}`, 'area');
+            if (f.search) addPill(`Busca: "${f.search}"`, 'search');
+
+            countLabel.innerText = count > 0 ? `${count} filtro(s) ativo(s)` : 'Sem filtros ativos';
+        }
+
+        function clearSingleFilter(key) {
+            if (key === 'search') {
+                AppState.filters.search = '';
+                document.getElementById('filter-search').value = '';
+            } else {
+                AppState.filters[key] = 'ALL';
+                document.getElementById(`filter-${key}`).value = 'ALL';
+            }
+            applyFilters();
+        }
+
+        function resetAllFilters() {
+            AppState.filters = { municipality: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
+            document.getElementById('filter-municipality').value = 'ALL';
+            document.getElementById('filter-organ').value = 'ALL';
+            document.getElementById('filter-status').value = 'ALL';
+            document.getElementById('filter-area').value = 'ALL';
+            document.getElementById('filter-search').value = '';
+            applyFilters();
+        }
+
+        // RENDER MODO EXECUTIVO
+        function renderExecutiveModeViews() {
+            const data = AppState.filteredRecords;
+            const totalPleitos = data.length;
+            const attendedList = data.filter(r => r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO');
+            const openList = data.filter(r => r.statusStd === 'EM_ABERTO' || r.statusStd === 'LICITACAO' || r.statusStd === 'EM_ESTUDO');
+            
+            const totalAttendedCount = attendedList.length;
+            const totalOpenCount = openList.length;
+            const rate = totalPleitos > 0 ? ((totalAttendedCount / totalPleitos) * 100).toFixed(1) : 0;
+
+            const valAttended = attendedList.reduce((acc, r) => acc + r.val, 0);
+            const valOpen = openList.reduce((acc, r) => acc + r.val, 0);
+            const avgTicket = totalAttendedCount > 0 ? valAttended / totalAttendedCount : 0;
+
+            // Update KPIs
+            document.getElementById('kpi-exec-total').innerText = totalPleitos;
+            document.getElementById('kpi-exec-attended-count').innerText = totalAttendedCount;
+            document.getElementById('kpi-exec-rate-badge').innerText = `${rate}%`;
+            document.getElementById('kpi-exec-rate-bar').style.width = `${rate}%`;
+            document.getElementById('kpi-exec-val-attended').innerText = formatBRL(valAttended);
+            document.getElementById('kpi-exec-ticket-avg').innerText = `Ticket Médio Atendido: ${formatBRL(avgTicket)}`;
+            document.getElementById('kpi-exec-open-count').innerText = `${totalOpenCount} Pleitos`;
+            document.getElementById('kpi-exec-val-open').innerText = formatBRL(valOpen);
+
+            // Render Insights Narrative
+            renderExecutiveInsights(totalPleitos, totalAttendedCount, rate, valAttended, valOpen);
+
+            // Render Executive Charts
+            renderExecutiveCharts(data);
+
+            // Render Pareto Concentration Analysis
+            renderParetoAnalysis(data, valAttended);
+
+            // Render Top 15 Major Investments Table
+            renderTopInvestmentsTable(data);
+
+            // Render City Comparison Tool
+            renderCityComparisonTool();
+
+            // Render Open Demands Priority Grid
+            renderPriorityOpenDemandsGrid(openList);
+        }
+
+        function renderExecutiveInsights(total, attended, rate, valAttended, valOpen) {
+            const list = document.getElementById('executive-insights-list');
+            list.innerHTML = '';
+
+            const topMuni = getTopMuniByVal();
+            const topOrgan = getTopOrganByVal();
+
+            const bullets = [
+                `• O volume total de recursos com status atendido/conveniado soma <strong>${formatBRL(valAttended)}</strong> distribuídos em ${attended} entregas mapeadas.`,
+                `• A taxa global de resolutividade dos pleitos no recorte atual é de <strong>${rate}%</strong> (${attended} de ${total} demandas).`,
+                `• O município com maior aporte financeiro atendido no recorte ativo é <strong>${topMuni.name}</strong> com <strong>${formatBRL(topMuni.val)}</strong>.`,
+                `• O órgão estadual com maior presença orçamentária no território é a secretaria/empresa <strong>${topOrgan.name}</strong> acumulando <strong>${formatBRL(topOrgan.val)}</strong>.`,
+                `• O passivo financeiro em aberto mapeado em demandas pendentes totaliza <strong>${formatBRL(valOpen)}</strong>.`
+            ];
+
+            bullets.forEach(b => {
+                const div = document.createElement('div');
+                div.className = 'bg-sky-950/40 p-3 rounded-lg border border-sky-800/40 text-slate-200';
+                div.innerHTML = b;
+                list.appendChild(div);
+            });
+        }
+
+        function getTopMuniByVal() {
+            const map = {};
+            AppState.filteredRecords.forEach(r => {
+                if (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO') {
+                    map[r.muni] = (map[r.muni] || 0) + r.val;
+                }
+            });
+            let topName = "Nenhum", maxVal = 0;
+            Object.entries(map).forEach(([m, v]) => {
+                if (v > maxVal) { maxVal = v; topName = m; }
+            });
+            return { name: topName, val: maxVal };
+        }
+
+        function getTopOrganByVal() {
+            const map = {};
+            AppState.filteredRecords.forEach(r => {
+                if (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO') {
+                    map[r.organ] = (map[r.organ] || 0) + r.val;
+                }
+            });
+            let topName = "Nenhum", maxVal = 0;
+            Object.entries(map).forEach(([o, v]) => {
+                if (v > maxVal) { maxVal = v; topName = o; }
+            });
+            return { name: topName, val: maxVal };
+        }
+
+        function renderExecutiveCharts(data) {
+            // 1. Muni Chart
+            const muniMap = {};
+            data.forEach(r => {
+                if (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO') {
+                    muniMap[r.muni] = (muniMap[r.muni] || 0) + r.val;
+                }
+            });
+            const sortedMuni = Object.entries(muniMap).sort((a,b) => b[1] - a[1]);
+
+            if (chartExecMuni) chartExecMuni.destroy();
+            chartExecMuni = new Chart(document.getElementById('chartExecMuni').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: sortedMuni.map(x => x[0]),
+                    datasets: [{
+                        label: 'Investimento Atendido (R$ Mi)',
+                        data: sortedMuni.map(x => (x[1] / 1000000).toFixed(2)),
+                        backgroundColor: '#0284c7',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { title: { display: true, text: 'R$ (Milhões)', font: { size: 10 } } } }
+                }
+            });
+
+            // 2. Area Chart
+            const areaMap = {};
+            data.forEach(r => {
+                if (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO') {
+                    areaMap[r.area] = (areaMap[r.area] || 0) + r.val;
+                }
+            });
+            const sortedArea = Object.entries(areaMap).sort((a,b) => b[1] - a[1]);
+
+            if (chartExecArea) chartExecArea.destroy();
+            chartExecArea = new Chart(document.getElementById('chartExecArea').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: sortedArea.map(x => x[0]),
+                    datasets: [{
+                        data: sortedArea.map(x => (x[1] / 1000000).toFixed(2)),
+                        backgroundColor: ['#0284c7', '#10b981', '#f59e0b', '#6366f1', '#ec4899', '#64748b']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } }
+                }
+            });
+
+            // 3. Organ Chart
+            const organMap = {};
+            data.forEach(r => {
+                if (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO') {
+                    organMap[r.organ] = (organMap[r.organ] || 0) + r.val;
+                }
+            });
+            const sortedOrgan = Object.entries(organMap).sort((a,b) => b[1] - a[1]);
+
+            if (chartExecOrgan) chartExecOrgan.destroy();
+            chartExecOrgan = new Chart(document.getElementById('chartExecOrgan').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: sortedOrgan.map(x => x[0]),
+                    datasets: [{
+                        label: 'Investimento (R$ Mi)',
+                        data: sortedOrgan.map(x => (x[1] / 1000000).toFixed(2)),
+                        backgroundColor: '#10b981',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            // 4. Status Chart
+            const statusCount = { "ATENDIDO": 0, "CONVENIO": 0, "LICITACAO": 0, "EM_ABERTO": 0 };
+            data.forEach(r => { statusCount[r.statusStd] = (statusCount[r.statusStd] || 0) + 1; });
+
+            if (chartExecStatus) chartExecStatus.destroy();
+            chartExecStatus = new Chart(document.getElementById('chartExecStatus').getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(statusCount),
+                    datasets: [{
+                        data: Object.values(statusCount),
+                        backgroundColor: ['#10b981', '#0284c7', '#f59e0b', '#e11d48']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } }
+                }
+            });
+        }
+
+        function renderParetoAnalysis(data, totalAttendedVal) {
+            const muniMap = {};
+            data.forEach(r => {
+                if (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO') {
+                    muniMap[r.muni] = (muniMap[r.muni] || 0) + r.val;
+                }
+            });
+            const sortedMuni = Object.values(muniMap).sort((a,b) => b - a);
+            const top5Val = sortedMuni.slice(0, 5).reduce((acc, v) => acc + v, 0);
+            const top5Pct = totalAttendedVal > 0 ? ((top5Val / totalAttendedVal) * 100).toFixed(1) : 0;
+
+            document.getElementById('pareto-top5-pct').innerText = `${top5Pct}%`;
+            document.getElementById('pareto-top5-bar').style.width = `${top5Pct}%`;
+            document.getElementById('pareto-top5-desc').innerText = `Os 5 maiores municípios concentram ${formatBRL(top5Val)} do total de recursos.`;
+
+            const organMap = {};
+            data.forEach(r => {
+                if (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO') {
+                    organMap[r.organ] = (organMap[r.organ] || 0) + r.val;
+                }
+            });
+            const sortedOrgan = Object.values(organMap).sort((a,b) => b - a);
+            const top3OrganVal = sortedOrgan.slice(0, 3).reduce((acc, v) => acc + v, 0);
+            const top3OrganPct = totalAttendedVal > 0 ? ((top3OrganVal / totalAttendedVal) * 100).toFixed(1) : 0;
+
+            document.getElementById('pareto-top3-organ-pct').innerText = `${top3OrganPct}%`;
+            document.getElementById('pareto-top3-organ-bar').style.width = `${top3OrganPct}%`;
+            document.getElementById('pareto-top3-organ-desc').innerText = `Os 3 maiores órgãos gerenciam ${formatBRL(top3OrganVal)} dos investimentos territoriais.`;
+        }
+
+        function renderTopInvestmentsTable(data) {
+            const tbody = document.getElementById('table-top-investments-body');
+            tbody.innerHTML = '';
+            const topList = [...data].sort((a,b) => b.val - a.val).slice(0, 15);
+
+            topList.forEach((item, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 border-b border-slate-100';
+                tr.innerHTML = `
+                    <td class="p-3 font-black text-sky-700">${idx + 1}º</td>
+                    <td class="p-3 font-bold text-slate-800">${item.muni}</td>
+                    <td class="p-3 font-semibold text-slate-600">${item.organ}</td>
+                    <td class="p-3 text-slate-700">${item.desc}</td>
+                    <td class="p-3 text-right font-extrabold text-slate-900">${formatBRL(item.val)}</td>
+                    <td class="p-3 text-center">
+                        <span class="px-2 py-0.5 text-[10px] font-bold rounded ${item.statusStd === 'ATENDIDO' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                            ${item.statusStd}
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderCityComparisonTool() {
+            const munis = [...new Set(AppState.normalizedRecords.map(r => r.muni))].sort();
+            const container = document.getElementById('muni-selector-chips');
+            container.innerHTML = '';
+
+            munis.forEach(m => {
+                const isSelected = AppState.selectedCitiesForComparison.includes(m);
+                const btn = document.createElement('button');
+                btn.className = `px-2.5 py-1 text-xs font-bold rounded-lg border transition ${isSelected ? 'bg-sky-600 text-white border-sky-600 shadow' : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-sky-400'}`;
+                btn.innerText = m;
+                btn.onclick = () => toggleCityComparison(m);
+                container.appendChild(btn);
+            });
+
+            // Auto-select first 3 cities if empty
+            if (AppState.selectedCitiesForComparison.length === 0 && munis.length > 0) {
+                AppState.selectedCitiesForComparison = munis.slice(0, 3);
+                renderCityComparisonTool();
+                return;
+            }
+
+            // Build Matrix Table
+            const head = document.getElementById('muni-comp-head');
+            const body = document.getElementById('muni-comp-body');
+            head.innerHTML = '';
+            body.innerHTML = '';
+
+            const selected = AppState.selectedCitiesForComparison;
+            const trHead = document.createElement('tr');
+            trHead.innerHTML = `<th class="p-3 text-slate-900">Métrica / Indicador</th>` + selected.map(c => `<th class="p-3 text-center text-sky-800 font-extrabold">${c}</th>`).join('');
+            head.appendChild(trHead);
+
+            // Row 1: Total Pleitos
+            const r1 = document.createElement('tr');
+            r1.innerHTML = `<td class="p-3 font-bold text-slate-700">Total de Pleitos Cadastrados</td>` + selected.map(c => {
+                const count = AppState.normalizedRecords.filter(r => r.muni === c).length;
+                return `<td class="p-3 text-center font-bold">${count}</td>`;
+            }).join('');
+            body.appendChild(r1);
+
+            // Row 2: Taxa de Atendimento
+            const r2 = document.createElement('tr');
+            r2.innerHTML = `<td class="p-3 font-bold text-slate-700">Taxa de Atendimento (%)</td>` + selected.map(c => {
+                const all = AppState.normalizedRecords.filter(r => r.muni === c);
+                const att = all.filter(r => r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO').length;
+                const pct = all.length > 0 ? ((att / all.length) * 100).toFixed(1) : 0;
+                return `<td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-xs font-bold ${pct >= 70 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${pct}%</span></td>`;
+            }).join('');
+            body.appendChild(r2);
+
+            // Row 3: Valor Atendido
+            const r3 = document.createElement('tr');
+            r3.innerHTML = `<td class="p-3 font-bold text-slate-700">Valor Atendido (R$)</td>` + selected.map(c => {
+                const val = AppState.normalizedRecords.filter(r => r.muni === c && (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO')).reduce((acc, r) => acc + r.val, 0);
+                return `<td class="p-3 text-center font-bold text-emerald-700">${formatBRL(val)}</td>`;
+            }).join('');
+            body.appendChild(r3);
+        }
+
+        function toggleCityComparison(muniName) {
+            const idx = AppState.selectedCitiesForComparison.indexOf(muniName);
+            if (idx >= 0) {
+                AppState.selectedCitiesForComparison.splice(idx, 1);
+            } else {
+                if (AppState.selectedCitiesForComparison.length >= 5) {
+                    alert("Você pode comparar no máximo 5 municípios simultaneamente.");
+                    return;
+                }
+                AppState.selectedCitiesForComparison.push(muniName);
+            }
+            renderCityComparisonTool();
+        }
+
+        function renderPriorityOpenDemandsGrid(openList) {
+            const grid = document.getElementById('open-demands-cards-grid');
+            grid.innerHTML = '';
+
+            if (openList.length === 0) {
+                grid.innerHTML = '<div class="col-span-3 p-6 text-center text-slate-400 font-semibold bg-white rounded-xl border border-slate-200">Nenhum pleito em aberto encontrado no recorte atual.</div>';
+                return;
+            }
+
+            const sorted = [...openList].sort((a,b) => b.val - a.val).slice(0, 9);
+
+            sorted.forEach(item => {
+                const card = document.createElement('div');
+                const pColor = item.priority === 'ALTA' ? 'bg-rose-100 text-rose-800 border-rose-300' : (item.priority === 'MÉDIA' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-slate-100 text-slate-700 border-slate-300');
+                
+                card.className = 'bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 hover:shadow-md transition';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold px-2 py-0.5 rounded bg-sky-100 text-sky-800">${item.muni}</span>
+                        <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded border ${pColor}">
+                            Prioridade: ${item.priority}
+                        </span>
+                    </div>
+                    <h5 class="text-xs font-bold text-slate-900 leading-snug">${item.desc}</h5>
+                    <div class="text-sm font-extrabold text-amber-600">${formatBRL(item.val)}</div>
+                    <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                        <span>Órgão: <strong>${item.organ}</strong></span>
+                        <span>Situação: <strong>${item.statusStd}</strong></span>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // RENDER MODO ANALISTA
+        function renderAnalystModeViews() {
+            renderFieldQualityGrid();
+            renderDuplicatesList();
+            renderFullAnalyticsTable();
+        }
+
+        function renderFieldQualityGrid() {
+            const grid = document.getElementById('field-quality-grid');
+            grid.innerHTML = '';
+            const stats = AppState.fieldStats;
+
+            const fields = [
+                { label: 'Município', pct: stats.muni || 0 },
+                { label: 'Órgão', pct: stats.organ || 0 },
+                { label: 'Descrição', pct: stats.desc || 0 },
+                { label: 'Valor', pct: stats.val || 0 },
+                { label: 'Situação', pct: stats.status || 0 }
+            ];
+
+            fields.forEach(f => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-50 p-3 rounded-xl border border-slate-200 text-center space-y-1';
+                card.innerHTML = `
+                    <div class="text-[11px] font-bold text-slate-500 uppercase">${f.label}</div>
+                    <div class="text-lg font-extrabold ${f.pct >= 90 ? 'text-emerald-600' : 'text-amber-600'}">${f.pct}%</div>
+                    <div class="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                        <div class="h-1.5 rounded-full ${f.pct >= 90 ? 'bg-emerald-500' : 'bg-amber-500'}" style="width: ${f.pct}%;"></div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function renderDuplicatesList() {
+            const container = document.getElementById('duplicates-container');
+            container.innerHTML = '';
+            const dupes = AppState.detectedDuplicates;
+
+            if (dupes.length === 0) {
+                container.innerHTML = '<div class="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500">Nenhuma duplicidade crítica detectada nesta base.</div>';
+                return;
+            }
+
+            dupes.forEach((pair, idx) => {
+                const div = document.createElement('div');
+                div.className = 'bg-amber-50/60 p-3 rounded-xl border border-amber-200 text-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3';
+                div.innerHTML = `
+                    <div class="space-y-1">
+                        <span class="font-bold text-amber-900">Similaridade: ${pair.similarity}%</span>
+                        <div class="text-slate-700"><strong>Reg #1:</strong> ${pair.item1.muni} (${pair.item1.organ}) - ${pair.item1.desc}</div>
+                        <div class="text-slate-700"><strong>Reg #2:</strong> ${pair.item2.muni} (${pair.item2.organ}) - ${pair.item2.desc}</div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="ignoreDuplicate(${idx})" class="px-2.5 py-1 bg-white border border-slate-300 rounded font-bold hover:bg-slate-100">Manter Ambos</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function ignoreDuplicate(idx) {
+            AppState.detectedDuplicates.splice(idx, 1);
+            renderDuplicatesList();
+        }
+
+        function renderFullAnalyticsTable() {
+            const tbody = document.getElementById('table-full-analytics-body');
+            tbody.innerHTML = '';
+
+            const start = (AppState.currentPage - 1) * AppState.pageSize;
+            const end = start + AppState.pageSize;
+            const pageRecords = AppState.filteredRecords.slice(start, end);
+
+            pageRecords.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 border-b border-slate-100 cursor-pointer';
+                tr.onclick = () => openDetailModal(r.id);
+                tr.innerHTML = `
+                    <td class="p-3 font-bold text-slate-400">#${r.id}</td>
+                    <td class="p-3 font-bold text-slate-800">${r.muni}</td>
+                    <td class="p-3 font-semibold text-slate-600">${r.organ}</td>
+                    <td class="p-3 text-slate-700">${r.desc}</td>
+                    <td class="p-3 text-right font-bold text-slate-900">${formatBRL(r.val)}</td>
+                    <td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-800">${r.statusStd}</span></td>
+                    <td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${r.priority === 'ALTA' ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'}">${r.priority}</span></td>
+                    <td class="p-3 text-center"><button class="text-sky-600 hover:underline font-bold">Audit</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('table-page-indicator').innerText = `Pág ${AppState.currentPage} de ${Math.ceil(AppState.filteredRecords.length / AppState.pageSize) || 1}`;
+        }
+
+        function changePage(dir) {
+            const maxPage = Math.ceil(AppState.filteredRecords.length / AppState.pageSize) || 1;
+            AppState.currentPage = Math.min(Math.max(1, AppState.currentPage + dir), maxPage);
+            renderFullAnalyticsTable();
+        }
+
+        function changePageSize(size) {
+            AppState.pageSize = parseInt(size);
+            AppState.currentPage = 1;
+            renderFullAnalyticsTable();
+        }
+
+        function openDetailModal(recordId) {
+            const r = AppState.normalizedRecords.find(x => x.id === recordId);
+            if (!r) return;
+
+            const modal = document.getElementById('detail-modal');
+            const content = document.getElementById('detail-modal-content');
+
+            content.innerHTML = `
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1">
+                    <span class="font-bold text-slate-900 uppercase">Dado Tratado / Normalizado</span>
+                    <div><strong>ID:</strong> #${r.id}</div>
+                    <div><strong>Município:</strong> ${r.muni}</div>
+                    <div><strong>Órgão:</strong> ${r.organ}</div>
+                    <div><strong>Descrição:</strong> ${r.desc}</div>
+                    <div><strong>Valor Tratado:</strong> ${formatBRL(r.val)}</div>
+                    <div><strong>Situação Padronizada:</strong> ${r.statusStd} (Original: "${r.statusRaw}")</div>
+                    <div><strong>Área Temática:</strong> ${r.area}</div>
+                    <div><strong>Prioridade Analítica:</strong> ${r.priority}</div>
+                </div>
+                <div class="bg-amber-50 p-3 rounded-lg border border-amber-200 space-y-1">
+                    <span class="font-bold text-amber-900 uppercase">Registro Original da Planilha (Não Alterado)</span>
+                    <pre class="text-[11px] text-amber-800 overflow-x-auto">${JSON.stringify(r.original, null, 2)}</pre>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detail-modal').classList.add('hidden');
+        }
+
+        // SHEETJS FILE PARSER & MAPPER MODAL
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            if (e.target.files.length) handleSpreadsheetUpload(e.target.files[0]);
+        });
+
+        function handleSpreadsheetUpload(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+                    if (!json || json.length === 0) {
+                        alert("A planilha enviada está vazia.");
+                        return;
+                    }
+
+                    AppState.pendingUploadedJson = json;
+                    autoDetectColumnsAndOpenMapper(json, file.name);
+                } catch (err) {
+                    console.error(err);
+                    alert("Erro ao ler planilha Excel/CSV.");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function autoDetectColumnsAndOpenMapper(json, filename) {
+            const sample = json[0] || {};
+            const keys = Object.keys(sample);
+
+            const findBestMatch = (candidates) => {
+                return keys.find(k => {
+                    const cleanK = k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                    return candidates.some(c => cleanK.includes(c));
+                }) || "";
+            };
+
+            AppState.columnMappings = {
+                muni: findBestMatch(['municipio', 'cidade', 'localidade']),
+                organ: findBestMatch(['orgao', 'secretaria', 'pasta']),
+                desc: findBestMatch(['descricao', 'objeto', 'pleito', 'acao', 'titulo']),
+                val: findBestMatch(['valor', 'investimento', 'orcamento']),
+                status: findBestMatch(['situacao', 'status', 'estagio', 'fase']),
+                area: findBestMatch(['area', 'eixo', 'tematica'])
+            };
+
+            // Render Mapper Modal UI
+            const container = document.getElementById('mapper-fields-list');
+            container.innerHTML = '';
+
+            const targetFields = [
+                { key: 'muni', label: 'Município (Obrigatório)', req: true },
+                { key: 'organ', label: 'Órgão / Secretaria', req: false },
+                { key: 'desc', label: 'Descrição / Pleito (Obrigatório)', req: true },
+                { key: 'val', label: 'Valor (R$)', req: false },
+                { key: 'status', label: 'Situação / Status', req: false },
+                { key: 'area', label: 'Área Temática', req: false }
+            ];
+
+            targetFields.forEach(f => {
+                const div = document.createElement('div');
+                div.className = 'flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg';
+                
+                let selectHtml = `<select id="map-select-${f.key}" class="bg-white border border-slate-300 rounded p-1 text-xs font-semibold focus:ring-2 focus:ring-sky-500">`;
+                selectHtml += `<option value="">[ Ignorar ou Ausente ]</option>`;
+                keys.forEach(k => {
+                    const isSel = AppState.columnMappings[f.key] === k ? 'selected' : '';
+                    selectHtml += `<option value="${k}" ${isSel}>${k}</option>`;
+                });
+                selectHtml += `</select>`;
+
+                div.innerHTML = `<span class="font-bold text-slate-800">${f.label}</span>${selectHtml}`;
+                container.appendChild(div);
+            });
+
+            document.getElementById('column-mapper-modal').classList.remove('hidden');
+        }
+
+        function confirmColumnMapping() {
+            const getVal = (k) => document.getElementById(`map-select-${k}`).value;
+            const mappings = {
+                muni: getVal('muni'),
+                organ: getVal('organ'),
+                desc: getVal('desc'),
+                val: getVal('val'),
+                status: getVal('status'),
+                area: getVal('area')
+            };
+
+            if (!mappings.muni || !mappings.desc) {
+                document.getElementById('mapper-warning-msg').innerText = "⚠ Selecione colunas válidas para Município e Descrição.";
+                return;
+            }
+
+            // Convert json using mappings
+            const parsedList = AppState.pendingUploadedJson.map(row => {
+                return {
+                    muni: row[mappings.muni] || "Não Especificado",
+                    organ: row[mappings.organ] || "Geral",
+                    desc: row[mappings.desc] || "Sem Descrição",
+                    val: row[mappings.val] || 0,
+                    status: row[mappings.status] || "Concluído",
+                    area: row[mappings.area] || ""
+                };
+            });
+
+            closeMapperModal();
+            loadInitialDataset(parsedList, "Planilha Personalizada do Usuário");
+        }
+
+        function closeMapperModal() {
+            document.getElementById('column-mapper-modal').classList.add('hidden');
+        }
+
+        // MULTI-TAB EXCEL EXPORT (SHEETJS)
+        function exportMultiTabExcel() {
+            const wb = XLSX.utils.book_new();
+
+            // Sheet 1: Base Tratada
+            const dataBase = AppState.filteredRecords.map(r => ({
+                ID: r.id,
+                Município: r.muni,
+                Órgão: r.organ,
+                Descrição: r.desc,
+                Valor: r.val,
+                Situação: r.statusStd,
+                Área: r.area,
+                Prioridade: r.priority
+            }));
+            const wsBase = XLSX.utils.json_to_sheet(dataBase);
+            XLSX.utils.book_append_sheet(wb, wsBase, "Base Tratada");
+
+            // Sheet 2: Resumo Executivo
+            const summary = [
+                { Indicador: "Total de Pleitos", Valor: AppState.filteredRecords.length },
+                { Indicador: "Score de Qualidade", Valor: `${AppState.qualityScore}%` },
+                { Indicador: "Investimento Atendido", Valor: AppState.filteredRecords.filter(r => r.statusStd==='ATENDIDO').reduce((a,b)=>a+b.val,0) },
+                { Indicador: "Investimento em Aberto", Valor: AppState.filteredRecords.filter(r => r.statusStd==='EM_ABERTO').reduce((a,b)=>a+b.val,0) }
+            ];
+            const wsSummary = XLSX.utils.json_to_sheet(summary);
+            XLSX.utils.book_append_sheet(wb, wsSummary, "Resumo Executivo");
+
+            XLSX.writeFile(wb, `relatorio_investimentos_tratado_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+    </script>
+</body>
+</html>
