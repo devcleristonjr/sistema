@@ -100,6 +100,40 @@
             }
         };
 
+        const DASHBOARD_STORAGE_KEY = 'mrc-dashboard-state-v1';
+
+        function saveDashboardState() {
+            try {
+                const payload = {
+                    filters: AppState.filters,
+                    selectedCitiesForComparison: AppState.selectedCitiesForComparison,
+                    viewMode: AppState.viewMode
+                };
+                localStorage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(payload));
+            } catch (error) {
+                console.warn('Não foi possível persistir o estado do dashboard.', error);
+            }
+        }
+
+        function restoreDashboardState() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(DASHBOARD_STORAGE_KEY) || 'null');
+                if (!saved) return;
+
+                AppState.filters = {
+                    municipality: saved.filters?.municipality || 'ALL',
+                    organ: saved.filters?.organ || 'ALL',
+                    status: saved.filters?.status || 'ALL',
+                    area: saved.filters?.area || 'ALL',
+                    search: saved.filters?.search || ''
+                };
+                AppState.selectedCitiesForComparison = Array.isArray(saved.selectedCitiesForComparison) ? saved.selectedCitiesForComparison : [];
+                AppState.viewMode = saved.viewMode === 'analyst' ? 'analyst' : 'executive';
+            } catch (error) {
+                console.warn('Não foi possível restaurar o estado salvo do dashboard.', error);
+            }
+        }
+
         const STATUS_OPTIONS = [
             'ATENDIDO',
             'EM_ABERTO',
@@ -131,6 +165,32 @@
             return STATUS_LABELS[String(statusValue || '').toUpperCase()] || 'Em Aberto';
         }
 
+        function normalizeStatusValue(rawStatus) {
+            const value = normalizeText(rawStatus, 'EM_ABERTO');
+            const cleaned = value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+            if (cleaned.includes('conclu') || cleaned.includes('atendid') || cleaned.includes('entreg') || cleaned.includes('finaliz')) return 'ATENDIDO';
+            if (cleaned.includes('conven')) return 'CONVENIO';
+            if (cleaned.includes('licit')) return 'LICITACAO';
+            if (cleaned.includes('estud') || cleaned.includes('analis') || cleaned.includes('avali')) return 'EM_ESTUDO';
+            if (cleaned.includes('aberto') || cleaned.includes('pend')) return 'EM_ABERTO';
+            if (cleaned.includes('cancel')) return 'CANCELADO';
+            return 'EM_ABERTO';
+        }
+
+        function normalizeAreaValue(rawArea) {
+            const value = normalizeText(rawArea, 'Infraestrutura e Geral');
+            const cleaned = value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+            if (cleaned.includes('educ') || cleaned.includes('esporte')) return 'Educação e Esporte';
+            if (cleaned.includes('agua') || cleaned.includes('sane') || cleaned.includes('dren') || cleaned.includes('esgoto')) return 'Saneamento, Drenagem e Água';
+            if (cleaned.includes('infra') || cleaned.includes('mobil') || cleaned.includes('transp') || cleaned.includes('paviment')) return 'Infraestrutura e Mobilidade';
+            if (cleaned.includes('habit') || cleaned.includes('urban') || cleaned.includes('lagoa') || cleaned.includes('praca')) return 'Habitação e Urbanização';
+            if (cleaned.includes('rural') || cleaned.includes('mercado') || cleaned.includes('feira') || cleaned.includes('agric')) return 'Desenvolvimento Rural e Feiras';
+            if (cleaned.includes('saude') || cleaned.includes('segur') || cleaned.includes('policia') || cleaned.includes('ubs')) return 'Saúde e Segurança Pública';
+            return value || 'Infraestrutura e Geral';
+        }
+
         function getPriorityLabel(priorityValue) {
             return PRIORITY_LABELS[String(priorityValue || '').toUpperCase()] || 'Baixa';
         }
@@ -152,7 +212,7 @@
                 case 'ATENDIDO':
                     return 'bg-emerald-100 text-emerald-800';
                 case 'CONVENIO':
-                    return 'bg-sky-100 text-sky-800';
+                    return 'bg-red-100 text-red-800';
                 case 'LICITACAO':
                     return 'bg-amber-100 text-amber-800';
                 case 'EM_ABERTO':
@@ -250,8 +310,10 @@
 
         // INITIALIZATION
         function initApp() {
+            restoreDashboardState();
             initMobileMenu();
             bindFilterInputs();
+            bindSummaryModalControls();
             loadInitialDataset(DEFAULT_DATASET, "Médio Rio de Contas (Dados Relatório Padrão)");
         }
 
@@ -277,13 +339,13 @@
             if (mode === 'executive') {
                 execContainer.classList.remove('hidden');
                 analystContainer.classList.add('hidden');
-                btnExec.className = "px-3 py-1.5 text-xs font-bold rounded-md bg-sky-600 text-white shadow transition";
+                btnExec.className = "px-3 py-1.5 text-xs font-bold rounded-md bg-red-600 text-white shadow transition";
                 btnAnalyst.className = "px-3 py-1.5 text-xs font-bold rounded-md text-slate-400 hover:text-white transition";
             } else {
                 execContainer.classList.add('hidden');
                 analystContainer.classList.remove('hidden');
                 btnExec.className = "px-3 py-1.5 text-xs font-bold rounded-md text-slate-400 hover:text-white transition";
-                btnAnalyst.className = "px-3 py-1.5 text-xs font-bold rounded-md bg-sky-600 text-white shadow transition";
+                btnAnalyst.className = "px-3 py-1.5 text-xs font-bold rounded-md bg-red-600 text-white shadow transition";
                 renderAnalystModeViews();
             }
         }
@@ -333,15 +395,7 @@
 
         // RULE-BASED CLASSIFICATION ENGINE
         function classifyStatus(rawStatus) {
-            const s = normalizeText(rawStatus, 'EM_ABERTO').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-            if (s.includes("conclu") || s.includes("atendid") || s.includes("entreg") || s.includes("finaliz")) return "ATENDIDO";
-            if (s.includes("conven")) return "CONVENIO";
-            if (s.includes("licit")) return "LICITACAO";
-            if (s.includes("estud") || s.includes("anali")) return "EM_ESTUDO";
-            if (s.includes("cancel")) return "CANCELADO";
-            if (s.includes("aberto") || s.includes("pend")) return "EM_ABERTO";
-            return "EM_ABERTO";
+            return normalizeStatusValue(rawStatus);
         }
 
         function classifyAreaByText(desc) {
@@ -379,10 +433,12 @@
             const total = AppState.normalizedRecords.length;
             if (total === 0) {
                 AppState.qualityScore = 0;
+                updateDataQualityAlerts([]);
                 return;
             }
 
             let muniValid = 0, organValid = 0, descValid = 0, valValid = 0, statusValid = 0;
+            const warnings = [];
 
             AppState.normalizedRecords.forEach(r => {
                 if (r.muni && r.muni !== "Não Especificado") muniValid++;
@@ -391,6 +447,14 @@
                 if (typeof r.val === 'number' && !isNaN(r.val) && r.val >= 0) valValid++;
                 if (r.statusRaw) statusValid++;
             });
+
+            if (AppState.detectedDuplicates && AppState.detectedDuplicates.length > 0) {
+                warnings.push(`${AppState.detectedDuplicates.length} duplicidade(s) suspeita(s)`);
+            }
+            if ((total - muniValid) > 0) warnings.push('Município ausente em alguns registros');
+            if ((total - descValid) > 0) warnings.push('Descrição incompleta em alguns registros');
+            if ((total - statusValid) > 0) warnings.push('Status ausente em alguns registros');
+            if ((total - valValid) > 0) warnings.push('Valores inválidos ou vazios');
 
             AppState.fieldStats = {
                 muni: Math.round((muniValid / total) * 100),
@@ -403,13 +467,27 @@
             const avg = (AppState.fieldStats.muni + AppState.fieldStats.organ + AppState.fieldStats.desc + AppState.fieldStats.val + AppState.fieldStats.status) / 5;
             AppState.qualityScore = Math.round(avg);
 
-            // Update Quality Score Badge in Header
             const scoreEl = ui.get('quality-score-badge');
             if (scoreEl) {
                 scoreEl.innerHTML = `<span>${AppState.qualityScore}%</span><span class="text-[9px] uppercase font-normal">Score</span>`;
             }
             ui.text('dataset-name-label', `Base Ativa: ${AppState.datasetLabel}`);
             ui.text('dataset-stats-summary', `${total} registros analíticos • Quality Score: ${AppState.qualityScore}%`);
+            updateDataQualityAlerts(warnings);
+        }
+
+        function updateDataQualityAlerts(warnings) {
+            const el = document.getElementById('data-quality-alerts');
+            if (!el) return;
+
+            if (!warnings || warnings.length === 0) {
+                el.innerHTML = '<span class="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 rounded-full px-2 py-1">Dados consistentes</span>';
+                return;
+            }
+
+            el.innerHTML = warnings.slice(0, 3).map(item => 
+                `<span class="bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-full px-2 py-1">${item}</span>`
+            ).join('');
         }
 
         // SIMILARITY DUPLICATE DETECTOR
@@ -497,6 +575,7 @@
             renderActivePills();
             renderExecutiveModeViews();
             if (AppState.viewMode === 'analyst') renderAnalystModeViews();
+            saveDashboardState();
         }
 
         function renderActivePills() {
@@ -510,8 +589,8 @@
             const addPill = (label, key) => {
                 count++;
                 const pill = document.createElement('span');
-                pill.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 bg-sky-100 text-sky-800 text-xs font-bold rounded-md border border-sky-200';
-                pill.innerHTML = `${label} <button onclick="clearSingleFilter('${key}')" class="text-sky-600 hover:text-sky-900 font-bold">&times;</button>`;
+                pill.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-md border border-red-200';
+                pill.innerHTML = `${label} <button onclick="clearSingleFilter('${key}')" class="text-red-600 hover:text-red-900 font-bold">&times;</button>`;
                 container.appendChild(pill);
             };
 
@@ -543,6 +622,185 @@
             document.getElementById('filter-area').value = 'ALL';
             document.getElementById('filter-search').value = '';
             applyFilters();
+        }
+
+        function formatCurrencyForWhatsApp(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(Number(value || 0));
+        }
+
+        function pluralize(count, singular, plural) {
+            return count === 1 ? singular : plural;
+        }
+
+        function buildSummaryTextByMunicipality(sourceRecords, mode = 'compact') {
+            const groupedByMunicipality = {};
+
+            sourceRecords.forEach((record) => {
+                if (!groupedByMunicipality[record.muni]) {
+                    groupedByMunicipality[record.muni] = [];
+                }
+                groupedByMunicipality[record.muni].push(record);
+            });
+
+            const municipalityOrder = Object.keys(groupedByMunicipality).sort((a, b) => {
+                const totalB = groupedByMunicipality[b].reduce((sum, item) => sum + item.val, 0);
+                const totalA = groupedByMunicipality[a].reduce((sum, item) => sum + item.val, 0);
+                return totalB - totalA;
+            });
+
+            const lines = [];
+
+            municipalityOrder.forEach((municipio) => {
+                const items = groupedByMunicipality[municipio];
+                const attended = items.filter((item) => item.statusStd === 'ATENDIDO').sort((a, b) => b.val - a.val);
+                const convenio = items.filter((item) => item.statusStd === 'CONVENIO').sort((a, b) => b.val - a.val);
+                const licitacao = items.filter((item) => item.statusStd === 'LICITACAO').sort((a, b) => b.val - a.val);
+                const open = items.filter((item) => ['EM_ABERTO', 'EM_ESTUDO'].includes(item.statusStd)).sort((a, b) => b.val - a.val);
+
+                lines.push(`📍 *${municipio.toUpperCase()}*`);
+
+                if (mode === 'compact') {
+                    const attendedValue = attended.reduce((sum, item) => sum + item.val, 0);
+                    const openValue = open.reduce((sum, item) => sum + item.val, 0);
+                    const convenioValue = convenio.reduce((sum, item) => sum + item.val, 0);
+                    const licitacaoValue = licitacao.reduce((sum, item) => sum + item.val, 0);
+
+                    if (attended.length) {
+                        lines.push(`✅ *Atendidos — ${attended.length}* — *${formatCurrencyForWhatsApp(attendedValue)}*`);
+                    }
+                    if (convenio.length) {
+                        lines.push(`🔵 *Convênio — ${convenio.length}* — *${formatCurrencyForWhatsApp(convenioValue)}*`);
+                    }
+                    if (licitacao.length) {
+                        lines.push(`🟡 *Licitação — ${licitacao.length}* — *${formatCurrencyForWhatsApp(licitacaoValue)}*`);
+                    }
+                    if (open.length) {
+                        const openLabel = open.length === 1 ? 'Em aberto' : 'Em aberto';
+                        const openValueText = openValue > 0 ? ` — *${formatCurrencyForWhatsApp(openValue)}*` : '';
+                        lines.push(`🔴 *${openLabel} — ${open.length}*${openValueText}`);
+                    }
+                } else {
+                    const statusGroups = [
+                        { label: 'Atendidos', items: attended, emoji: '✅', valueField: true },
+                        { label: 'Convênio', items: convenio, emoji: '🔵', valueField: true },
+                        { label: 'Licitação', items: licitacao, emoji: '🟡', valueField: true },
+                        { label: 'Em aberto', items: open, emoji: '🔴', valueField: false }
+                    ];
+
+                    statusGroups.forEach((group) => {
+                        if (!group.items.length) return;
+                        const totalValue = group.items.reduce((sum, item) => sum + item.val, 0);
+                        const totalText = group.valueField && totalValue > 0 ? ` — *${formatCurrencyForWhatsApp(totalValue)}*` : '';
+                        lines.push(`${group.emoji} *${group.label} — ${group.items.length}*${totalText}`);
+                        group.items.forEach((item) => {
+                            const desc = item.desc ? item.desc.replace(/\s+/g, ' ').trim() : 'Sem descrição';
+                            const suffix = item.val > 0 ? ` — *${formatCurrencyForWhatsApp(item.val)}*` : '';
+                            lines.push(`• ${item.organ} — ${desc}${suffix}`);
+                        });
+                    });
+                }
+
+                lines.push('');
+            });
+
+            return lines.join('\n');
+        }
+
+        function buildWhatsAppSummaryText(mode = 'compact') {
+            const sourceRecords = AppState.filteredRecords.length ? AppState.filteredRecords : AppState.normalizedRecords;
+            const lines = buildSummaryTextByMunicipality(sourceRecords, mode).split('\n');
+
+            const totalPleitos = sourceRecords.length;
+            const totalAtendidos = sourceRecords.filter((item) => item.statusStd === 'ATENDIDO').length;
+            const totalConvenio = sourceRecords.filter((item) => item.statusStd === 'CONVENIO').length;
+            const totalLicitacao = sourceRecords.filter((item) => item.statusStd === 'LICITACAO').length;
+            const totalOpen = sourceRecords.filter((item) => ['EM_ABERTO', 'EM_ESTUDO'].includes(item.statusStd)).length;
+            const valorAtendidos = sourceRecords.filter((item) => item.statusStd === 'ATENDIDO').reduce((sum, item) => sum + item.val, 0);
+
+            lines.push('━━━━━━━━━━━━━━');
+            lines.push('📊 *RESUMO GERAL*');
+            lines.push('');
+            lines.push(`• *${totalPleitos} pleitos*`);
+            lines.push(`• ✅ ${totalAtendidos} atendidos`);
+            lines.push(`• 🔴 ${totalOpen} em aberto`);
+            if (totalConvenio) lines.push(`• 🔵 ${totalConvenio} em convênio`);
+            if (totalLicitacao) lines.push(`• 🟡 ${totalLicitacao} em licitação`);
+            lines.push('');
+            lines.push(`💰 *Valor total atendido: ${formatCurrencyForWhatsApp(valorAtendidos)}*`);
+            lines.push('━━━━━━━━━━━━━━');
+
+            return lines.join('\n');
+        }
+
+        function bindSummaryModalControls() {
+            const select = document.getElementById('summary-mode-select');
+            if (!select) return;
+
+            select.addEventListener('change', () => {
+                const modal = document.getElementById('summary-modal');
+                if (modal && !modal.classList.contains('hidden')) {
+                    const textarea = document.getElementById('summary-copy-text');
+                    if (textarea) {
+                        textarea.value = buildWhatsAppSummaryText(select.value || 'compact');
+                    }
+                }
+            });
+        }
+
+        function openSummaryModal() {
+            const mode = document.getElementById('summary-mode-select')?.value || 'compact';
+            const summaryText = buildWhatsAppSummaryText(mode);
+            const modal = document.getElementById('summary-modal');
+            const textarea = document.getElementById('summary-copy-text');
+
+            if (!modal || !textarea) return;
+
+            textarea.value = summaryText;
+            modal.classList.remove('hidden');
+            setTimeout(() => textarea.focus(), 50);
+        }
+
+        function closeSummaryModal() {
+            const modal = document.getElementById('summary-modal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        async function copySummaryText() {
+            const textarea = document.getElementById('summary-copy-text');
+            if (!textarea) return;
+
+            const text = textarea.value;
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(text);
+                } else {
+                    textarea.focus();
+                    textarea.select();
+                    document.execCommand('copy');
+                }
+
+                const button = document.getElementById('summary-copy-button');
+                if (button) {
+                    const previous = button.textContent;
+                    button.textContent = 'Copiado!';
+                    setTimeout(() => {
+                        button.textContent = previous;
+                    }, 1200);
+                }
+            } catch (error) {
+                textarea.focus();
+                textarea.select();
+                document.execCommand('copy');
+            }
+        }
+
+        function generateWhatsAppSummary() {
+            openSummaryModal();
         }
 
         // RENDER MODO EXECUTIVO
@@ -591,8 +849,57 @@
             // Render executive secretariat matrix
             renderExecutiveSecretariatMatrix();
 
-            // Render full general table toggle section
+            // Render executive summary strip and full general table
+            renderExecutiveSummaryStrip(data);
             renderGeneralExecutiveTable();
+        }
+
+        function renderExecutiveSummaryStrip(data) {
+            const container = document.getElementById('executive-summary-strip');
+            const countLabel = document.getElementById('general-table-count-label');
+            if (!container || !countLabel) return;
+
+            const totalPleitos = data.length;
+            const attended = data.filter(r => isAttendedStatus(r.statusStd));
+            const open = data.filter(r => isOpenStatus(r.statusStd));
+            const totalValue = data.reduce((sum, item) => sum + item.val, 0);
+            const attendedValue = attended.reduce((sum, item) => sum + item.val, 0);
+            const openValue = open.reduce((sum, item) => sum + item.val, 0);
+            const topMuni = getTopMuniByVal();
+
+            countLabel.textContent = `${totalPleitos} registros no recorte atual`;
+
+            const cards = [
+                { label: 'Pleitos', value: totalPleitos.toLocaleString('pt-BR'), accent: 'bg-red-50 text-red-800 border-red-200', icon: '📌' },
+                { label: 'Atendidos', value: attended.length.toLocaleString('pt-BR'), accent: 'bg-emerald-50 text-emerald-800 border-emerald-200', icon: '✅' },
+                { label: 'Em aberto', value: open.length.toLocaleString('pt-BR'), accent: 'bg-amber-50 text-amber-800 border-amber-200', icon: '⏳' },
+                { label: 'Valor total', value: formatBRL(totalValue), accent: 'bg-slate-100 text-slate-800 border-slate-200', icon: '💰' },
+                { label: 'Maior município', value: topMuni.name || '—', accent: 'bg-red-100 text-red-900 border-red-200', icon: '📍' }
+            ];
+
+            container.innerHTML = cards.map(card => `
+                <div class="rounded-xl border ${card.accent} px-3 py-3 shadow-sm">
+                    <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
+                        <span>${card.label}</span>
+                        <span>${card.icon}</span>
+                    </div>
+                    <div class="mt-3 text-xl font-black leading-none">${card.value}</div>
+                </div>
+            `).join('');
+
+            if (topMuni?.val > 0) {
+                const municipalityCard = container.querySelectorAll('div.rounded-xl')[4];
+                if (municipalityCard) {
+                    municipalityCard.innerHTML = `
+                        <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
+                            <span>Maior município</span>
+                            <span>📍</span>
+                        </div>
+                        <div class="mt-3 text-sm font-black leading-tight">${topMuni.name}</div>
+                        <div class="mt-1 text-[11px] font-semibold opacity-80">${formatBRL(topMuni.val)}</div>
+                    `;
+                }
+            }
         }
 
         function renderExecutiveSecretariatMatrix() {
@@ -680,7 +987,7 @@
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-slate-50 border-b border-slate-100';
                 tr.innerHTML = `
-                    <td class="p-3 font-black text-sky-700">${idx + 1}</td>
+                    <td class="p-3 font-black text-red-700">${idx + 1}</td>
                     <td class="p-3 font-bold text-slate-800">${item.muni}</td>
                     <td class="p-3 font-semibold text-slate-600">${item.organ}</td>
                     <td class="p-3 text-slate-600">${item.area || 'Sem área'}</td>
@@ -713,7 +1020,7 @@
 
             bullets.forEach(b => {
                 const div = document.createElement('div');
-                div.className = 'bg-sky-950/40 p-3 rounded-lg border border-sky-800/40 text-slate-200';
+                div.className = 'bg-red-950/40 p-3 rounded-lg border border-red-800/40 text-slate-200';
                 div.innerHTML = b;
                 list.appendChild(div);
             });
@@ -748,14 +1055,14 @@
         }
 
         function renderExecutiveCharts(data) {
-            // 1. Muni Chart
+            // 1. Muni Chart (mantém foco em investimentos atendidos/conveniados, como descrito no título)
             const muniMap = {};
             data.forEach(r => {
                 if (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO') {
                     muniMap[r.muni] = (muniMap[r.muni] || 0) + r.val;
                 }
             });
-            const sortedMuni = Object.entries(muniMap).sort((a,b) => b[1] - a[1]);
+            const sortedMuni = Object.entries(muniMap).sort((a, b) => b[1] - a[1]);
 
             if (chartExecMuni) chartExecMuni.destroy();
             chartExecMuni = new Chart(document.getElementById('chartExecMuni').getContext('2d'), {
@@ -777,14 +1084,12 @@
                 }
             });
 
-            // 2. Area Chart
+            // 2. Area Chart: mostra a distribuição real do investimento por área no recorte atual
             const areaMap = {};
             data.forEach(r => {
-                if (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO') {
-                    areaMap[r.area] = (areaMap[r.area] || 0) + r.val;
-                }
+                areaMap[r.area] = (areaMap[r.area] || 0) + r.val;
             });
-            const sortedArea = Object.entries(areaMap).sort((a,b) => b[1] - a[1]);
+            const sortedArea = Object.entries(areaMap).sort((a, b) => b[1] - a[1]);
 
             if (chartExecArea) chartExecArea.destroy();
             chartExecArea = new Chart(document.getElementById('chartExecArea').getContext('2d'), {
@@ -792,25 +1097,31 @@
                 data: {
                     labels: sortedArea.map(x => x[0]),
                     datasets: [{
-                        data: sortedArea.map(x => (x[1] / 1000000).toFixed(2)),
-                        backgroundColor: ['#0284c7', '#10b981', '#f59e0b', '#6366f1', '#ec4899', '#64748b']
+                        data: sortedArea.map(x => Number((x[1] / 1000000).toFixed(2))),
+                        backgroundColor: ['#0284c7', '#10b981', '#f59e0b', '#6366f1', '#ec4899', '#64748b', '#0ea5e9', '#8b5cf6']
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } }
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Distribuição do investimento por área temática',
+                            font: { size: 11, weight: 'bold' },
+                            padding: 12
+                        },
+                        legend: { position: 'bottom', labels: { font: { size: 10 } } }
+                    }
                 }
             });
 
-            // 3. Organ Chart
+            // 3. Organ Chart: distribuição financeira total por órgão/secretaria no recorte atual
             const organMap = {};
             data.forEach(r => {
-                if (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO') {
-                    organMap[r.organ] = (organMap[r.organ] || 0) + r.val;
-                }
+                organMap[r.organ] = (organMap[r.organ] || 0) + r.val;
             });
-            const sortedOrgan = Object.entries(organMap).sort((a,b) => b[1] - a[1]);
+            const sortedOrgan = Object.entries(organMap).sort((a, b) => b[1] - a[1]);
 
             if (chartExecOrgan) chartExecOrgan.destroy();
             chartExecOrgan = new Chart(document.getElementById('chartExecOrgan').getContext('2d'), {
@@ -819,7 +1130,7 @@
                     labels: sortedOrgan.map(x => x[0]),
                     datasets: [{
                         label: 'Investimento (R$ Mi)',
-                        data: sortedOrgan.map(x => (x[1] / 1000000).toFixed(2)),
+                        data: sortedOrgan.map(x => Number((x[1] / 1000000).toFixed(2))),
                         backgroundColor: '#10b981',
                         borderRadius: 4
                     }]
@@ -832,36 +1143,62 @@
                 }
             });
 
-            // 4. Status Chart
-            const statusCount = STATUS_OPTIONS.reduce((acc, status) => {
+            // 4. Status Chart: usa apenas os valores reais da coluna de situação do cadastro
+            const statusOrder = ['Concluído', 'Convênio', 'Licitação', 'Em Aberto'];
+            const statusCount = statusOrder.reduce((acc, status) => {
                 acc[status] = 0;
                 return acc;
             }, {});
 
             data.forEach(r => {
-                const key = String(r.statusStd || '').toUpperCase();
-                if (statusCount[key] !== undefined) {
-                    statusCount[key] += 1;
+                const rawLabel = normalizeText(r.statusRaw || r.statusStd || 'Em Aberto');
+                const normalized = rawLabel.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+                if (normalized.includes('conven')) {
+                    statusCount['Convênio'] += 1;
+                    return;
+                }
+                if (normalized.includes('licit')) {
+                    statusCount['Licitação'] += 1;
+                    return;
+                }
+                if (normalized.includes('conclu') || normalized.includes('atendid') || normalized.includes('entreg') || normalized.includes('finaliz')) {
+                    statusCount['Concluído'] += 1;
+                    return;
+                }
+                if (normalized.includes('aberto') || normalized.includes('pend') || normalized.includes('estud') || normalized.includes('anali')) {
+                    statusCount['Em Aberto'] += 1;
+                    return;
+                }
+                if (normalized.includes('cancel')) {
+                    statusCount['Em Aberto'] += 1;
                 }
             });
 
-            const statusChartLabels = STATUS_OPTIONS.map(status => getStatusLabel(status));
-            const statusChartColors = ['#10b981', '#e11d48', '#f59e0b', '#0284c7', '#6366f1', '#94a3b8'];
+            const statusChartColors = ['#10b981', '#0284c7', '#f59e0b', '#e11d48'];
 
             if (chartExecStatus) chartExecStatus.destroy();
             chartExecStatus = new Chart(document.getElementById('chartExecStatus').getContext('2d'), {
                 type: 'pie',
                 data: {
-                    labels: statusChartLabels,
+                    labels: statusOrder,
                     datasets: [{
-                        data: STATUS_OPTIONS.map(status => statusCount[status] || 0),
+                        data: statusOrder.map(status => statusCount[status] || 0),
                         backgroundColor: statusChartColors
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } }
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Quantidade de pleitos por situação',
+                            font: { size: 11, weight: 'bold' },
+                            padding: 12
+                        },
+                        legend: { position: 'bottom', labels: { font: { size: 10 } } }
+                    }
                 }
             });
         }
@@ -905,7 +1242,7 @@
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-slate-50 border-b border-slate-100';
                 tr.innerHTML = `
-                    <td class="p-3 font-black text-sky-700">${idx + 1}º</td>
+                    <td class="p-3 font-black text-red-700">${idx + 1}º</td>
                     <td class="p-3 font-bold text-slate-800">${item.muni}</td>
                     <td class="p-3 font-semibold text-slate-600">${item.organ}</td>
                     <td class="p-3 text-slate-700">${item.desc}</td>
@@ -921,14 +1258,29 @@
         }
 
         function renderCityComparisonTool() {
-            const munis = [...new Set(AppState.normalizedRecords.map(r => r.muni))].sort();
+            const sourceRecords = AppState.filteredRecords.length ? AppState.filteredRecords : AppState.normalizedRecords;
+            const munis = [...new Set(sourceRecords.map(r => r.muni))].sort();
             const container = document.getElementById('muni-selector-chips');
             container.innerHTML = '';
+
+            if (!AppState.selectedCitiesForComparison.length && munis.length) {
+                const rankedByValue = Object.entries(
+                    sourceRecords.reduce((acc, item) => {
+                        acc[item.muni] = (acc[item.muni] || 0) + item.val;
+                        return acc;
+                    }, {})
+                )
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 3)
+                    .map(([name]) => name);
+
+                AppState.selectedCitiesForComparison = rankedByValue.length ? rankedByValue : munis.slice(0, 3);
+            }
 
             munis.forEach(m => {
                 const isSelected = AppState.selectedCitiesForComparison.includes(m);
                 const btn = document.createElement('button');
-                btn.className = `px-2.5 py-1 text-xs font-bold rounded-lg border transition ${isSelected ? 'bg-sky-600 text-white border-sky-600 shadow' : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-sky-400'}`;
+                btn.className = `px-2.5 py-1 text-xs font-bold rounded-lg border transition ${isSelected ? 'bg-red-600 text-white border-red-600 shadow' : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-red-400'}`;
                 btn.innerText = m;
                 btn.onclick = () => toggleCityComparison(m);
                 container.appendChild(btn);
@@ -940,7 +1292,12 @@
             head.innerHTML = '';
             body.innerHTML = '';
 
-            const selected = AppState.selectedCitiesForComparison;
+            const selected = AppState.selectedCitiesForComparison.filter(city => munis.includes(city));
+            if (!selected.length && munis.length) {
+                AppState.selectedCitiesForComparison = munis.slice(0, 3);
+            }
+
+            const activeSelected = AppState.selectedCitiesForComparison.filter(city => munis.includes(city));
 
             if (selected.length === 0) {
                 const trHead = document.createElement('tr');
@@ -954,21 +1311,21 @@
             }
 
             const trHead = document.createElement('tr');
-            trHead.innerHTML = `<th class="p-3 text-slate-900">Métrica / Indicador</th>` + selected.map(c => `<th class="p-3 text-center text-sky-800 font-extrabold">${c}</th>`).join('');
+            trHead.innerHTML = `<th class="p-3 text-slate-900">Métrica / Indicador</th>` + activeSelected.map(c => `<th class="p-3 text-center text-red-800 font-extrabold">${c}</th>`).join('');
             head.appendChild(trHead);
 
             // Row 1: Total Pleitos
             const r1 = document.createElement('tr');
-            r1.innerHTML = `<td class="p-3 font-bold text-slate-700">Total de Pleitos Cadastrados</td>` + selected.map(c => {
-                const count = AppState.normalizedRecords.filter(r => r.muni === c).length;
+            r1.innerHTML = `<td class="p-3 font-bold text-slate-700">Total de Pleitos Cadastrados</td>` + activeSelected.map(c => {
+                const count = sourceRecords.filter(r => r.muni === c).length;
                 return `<td class="p-3 text-center font-bold">${count}</td>`;
             }).join('');
             body.appendChild(r1);
 
             // Row 2: Taxa de Atendimento
             const r2 = document.createElement('tr');
-            r2.innerHTML = `<td class="p-3 font-bold text-slate-700">Taxa de Atendimento (%)</td>` + selected.map(c => {
-                const all = AppState.normalizedRecords.filter(r => r.muni === c);
+            r2.innerHTML = `<td class="p-3 font-bold text-slate-700">Taxa de Atendimento (%)</td>` + activeSelected.map(c => {
+                const all = sourceRecords.filter(r => r.muni === c);
                 const att = all.filter(r => r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO').length;
                 const pct = all.length > 0 ? ((att / all.length) * 100).toFixed(1) : 0;
                 return `<td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-xs font-bold ${pct >= 70 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${pct}%</span></td>`;
@@ -977,11 +1334,12 @@
 
             // Row 3: Valor Atendido
             const r3 = document.createElement('tr');
-            r3.innerHTML = `<td class="p-3 font-bold text-slate-700">Valor Atendido (R$)</td>` + selected.map(c => {
-                const val = AppState.normalizedRecords.filter(r => r.muni === c && (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO')).reduce((acc, r) => acc + r.val, 0);
+            r3.innerHTML = `<td class="p-3 font-bold text-slate-700">Valor Atendido (R$)</td>` + activeSelected.map(c => {
+                const val = sourceRecords.filter(r => r.muni === c && (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO')).reduce((acc, r) => acc + r.val, 0);
                 return `<td class="p-3 text-center font-bold text-emerald-700">${formatBRL(val)}</td>`;
             }).join('');
             body.appendChild(r3);
+            saveDashboardState();
         }
 
         function clearCityComparison() {
@@ -1000,6 +1358,7 @@
                 }
                 AppState.selectedCitiesForComparison.push(muniName);
             }
+            saveDashboardState();
             renderCityComparisonTool();
         }
 
@@ -1023,7 +1382,7 @@
                 card.className = 'bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 hover:shadow-md transition';
                 card.innerHTML = `
                     <div class="flex items-start justify-between gap-3">
-                        <span class="text-xs font-bold px-2 py-0.5 rounded bg-sky-100 text-sky-800">${item.muni}</span>
+                        <span class="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-800">${item.muni}</span>
                         <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded border ${pColor}">
                             ${getPriorityLabel(item.priority)}
                         </span>
@@ -1131,7 +1490,7 @@
                     <td class="p-3 text-right font-bold text-slate-900">${formatBRL(r.val)}</td>
                     <td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${getStatusBadgeClasses(r.statusStd)}">${getStatusLabel(r.statusStd)}</span></td>
                     <td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${getPriorityBadgeClasses(r.priority)}">${getPriorityLabel(r.priority)}</span></td>
-                    <td class="p-3 text-center"><button class="text-sky-600 hover:underline font-bold">Audit</button></td>
+                    <td class="p-3 text-center"><button class="text-red-600 hover:underline font-bold">Audit</button></td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -1182,12 +1541,31 @@
             document.getElementById('detail-modal').classList.add('hidden');
         }
 
+        function showLoadingStatus(message = 'Carregando informações da planilha', details = 'Aguarde um momento enquanto os dados são processados...') {
+            const el = document.getElementById('loading-status');
+            const title = document.getElementById('loading-status-title');
+            const subtitle = document.getElementById('loading-status-subtitle');
+
+            if (!el || !title || !subtitle) return;
+
+            title.textContent = message;
+            subtitle.textContent = details;
+            el.classList.remove('hidden');
+        }
+
+        function hideLoadingStatus() {
+            const el = document.getElementById('loading-status');
+            if (!el) return;
+            el.classList.add('hidden');
+        }
+
         // SHEETJS FILE PARSER & MAPPER MODAL
         document.getElementById('file-input').addEventListener('change', (e) => {
             if (e.target.files.length) handleSpreadsheetUpload(e.target.files[0]);
         });
 
         function handleSpreadsheetUpload(file) {
+            showLoadingStatus('Lendo planilha...', 'Validando estrutura do arquivo e preparando os dados para análise...');
             const reader = new FileReader();
             reader.onload = (e) => {
                 try {
@@ -1197,16 +1575,26 @@
                     const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
                     if (!json || json.length === 0) {
+                        hideLoadingStatus();
                         alert("A planilha enviada está vazia.");
                         return;
                     }
 
                     AppState.pendingUploadedJson = json;
-                    autoDetectColumnsAndOpenMapper(json, file.name);
+                    showLoadingStatus('Normalizando registros...', 'Padronizando municípios, status, valores e áreas da planilha...');
+                    setTimeout(() => {
+                        hideLoadingStatus();
+                        autoDetectColumnsAndOpenMapper(json, file.name);
+                    }, 400);
                 } catch (err) {
+                    hideLoadingStatus();
                     console.error(err);
                     alert("Erro ao ler planilha Excel/CSV.");
                 }
+            };
+            reader.onerror = () => {
+                hideLoadingStatus();
+                alert("Não foi possível carregar a planilha. Tente novamente.");
             };
             reader.readAsArrayBuffer(file);
         }
@@ -1248,7 +1636,7 @@
                 const div = document.createElement('div');
                 div.className = 'flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg';
                 
-                let selectHtml = `<select id="map-select-${f.key}" class="bg-white border border-slate-300 rounded p-1 text-xs font-semibold focus:ring-2 focus:ring-sky-500">`;
+                let selectHtml = `<select id="map-select-${f.key}" class="bg-white border border-slate-300 rounded p-1 text-xs font-semibold focus:ring-2 focus:ring-red-500">`;
                 selectHtml += `<option value="">[ Ignorar ou Ausente ]</option>`;
                 keys.forEach(k => {
                     const isSel = AppState.columnMappings[f.key] === k ? 'selected' : '';
