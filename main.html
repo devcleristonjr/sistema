@@ -121,7 +121,16 @@
                     <div id="data-quality-alerts" class="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-300"></div>
                 </div>
             </div>
-            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div class="flex flex-col xl:flex-row items-stretch xl:items-center gap-2 w-full xl:w-auto justify-end">
+                <div class="flex items-center gap-2 bg-slate-800/80 border border-slate-700 rounded-lg px-2 py-1.5 min-w-[190px]">
+                    <label for="default-municipality-selector" class="text-[10px] font-bold uppercase tracking-[0.14em] text-red-200 whitespace-nowrap">Município</label>
+                    <select id="default-municipality-selector" class="w-full bg-slate-900/60 text-white text-xs border border-slate-600 rounded-md px-2 py-1.5 focus:ring-2 focus:ring-red-500 focus:outline-none">
+                        <option value="ALL">Todos</option>
+                    </select>
+                </div>
+                <button id="apply-selected-municipality-report" onclick="applySelectedMunicipalityReport()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition no-print flex items-center gap-1.5">
+                    <span>&#128202;</span> Gerar Relatório
+                </button>
                 <button onclick="document.getElementById('file-input').click()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-red-300 font-bold px-3 py-1.5 rounded-lg text-xs transition no-print flex items-center gap-1.5">
                     <span>&#128194;</span> Importar Nova Planilha
                 </button>
@@ -312,37 +321,8 @@
                 </div>
             </section>
 
-            <!-- Key Executive Charts Grid -->
-            <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Chart 1: Investimento por Município -->
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <div class="flex items-center justify-between mb-1">
-                            <h4 class="font-bold text-slate-900 text-sm">Investimento Atendido por Município</h4>
-                            <span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">Ranking Financeiro</span>
-                        </div>
-                        <p class="text-xs text-slate-500 mb-3">Volume acumulado de recursos entregues ou contratados (em R$ Milhões).</p>
-                    </div>
-                    <div class="chart-container">
-                        <canvas id="chartExecMuni"></canvas>
-                    </div>
-                </div>
-
-                <!-- Chart 2: Distribuição por Área Temática -->
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <div class="flex items-center justify-between mb-1">
-                            <h4 class="font-bold text-slate-900 text-sm">Investimento por Área Temática</h4>
-                            <span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">Eixos Estruturantes</span>
-                        </div>
-                        <p class="text-xs text-slate-500 mb-3">Proporção dos investimentos públicos alocados por setor.</p>
-                    </div>
-                    <div class="chart-container">
-                        <canvas id="chartExecArea"></canvas>
-                    </div>
-                </div>
-
-                <!-- Chart 3: Atuação por Órgão -->
+            <!-- Executive Charts Grid -->
+            <section class="grid grid-cols-1 gap-6">
                 <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                     <div>
                         <div class="flex items-center justify-between mb-1">
@@ -353,20 +333,6 @@
                     </div>
                     <div class="chart-container">
                         <canvas id="chartExecOrgan"></canvas>
-                    </div>
-                </div>
-
-                <!-- Chart 4: Estágios de Execução -->
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <div class="flex items-center justify-between mb-1">
-                            <h4 class="font-bold text-slate-900 text-sm">Divisão por Situação dos Pleitos</h4>
-                            <span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">Status de Atendimento</span>
-                        </div>
-                        <p class="text-xs text-slate-500 mb-3">Distribuição entre concluídos, conveniados, licitados e em aberto.</p>
-                    </div>
-                    <div class="chart-container">
-                        <canvas id="chartExecStatus"></canvas>
                     </div>
                 </div>
             </section>
@@ -404,69 +370,6 @@
                         </div>
                         <p id="pareto-top3-organ-desc" class="text-xs text-slate-600">Calculando participação dos 3 maiores órgãos...</p>
                     </div>
-                </div>
-            </section>
-
-            <!-- Top 15 Major Investments Table -->
-            <section class="bg-gradient-to-br from-white via-red-50 to-white rounded-2xl border border-red-100 shadow-sm overflow-hidden">
-                <div class="p-5 border-b border-red-100 flex items-center justify-between">
-                    <div>
-                        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-                            <span>&#127942;</span> Ranking dos 15 Maiores Investimentos
-                        </h3>
-                        <p class="text-xs text-slate-500">Projetos de maior aporte financeiro no recorte de dados atual.</p>
-                    </div>
-                    <span class="text-xs text-slate-400 font-medium">Ordenado por Valor Decrescente</span>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs text-slate-700">
-                        <thead class="bg-gradient-to-r from-red-900 via-red-800 to-red-700 text-white font-semibold">
-                            <tr>
-                                <th class="p-3">Pos.</th>
-                                <th class="p-3">Município</th>
-                                <th class="p-3">Órgão</th>
-                                <th class="p-3">Descrição Resumida do Objeto</th>
-                                <th class="p-3 text-right">Valor (R$)</th>
-                                <th class="p-3 text-center">Situação Padronizada</th>
-                            </tr>
-                        </thead>
-                        <tbody id="table-top-investments-body" class="divide-y divide-slate-100">
-                            <!-- Injected by JS -->
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- Municipality Profile & Multi-City Comparison Tool -->
-            <section class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                    <div>
-                        <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
-                            <span>&#127961;</span> Perfil Municipal & Ferramenta de Comparação
-                        </h3>
-                        <p class="text-xs text-slate-500">Selecione até 5 municípios para gerar uma matriz de comparação lado a lado.</p>
-                    </div>
-                    <!-- City Selector Chips Container -->
-                    <div class="flex flex-wrap items-center gap-2">
-                        <div id="muni-selector-chips" class="flex flex-wrap gap-1.5 no-print">
-                            <!-- JS injected municipality selector chips -->
-                        </div>
-                        <button onclick="clearCityComparison()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-[11px] transition no-print">
-                            Limpar
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Side-by-Side Comparison Container -->
-                <div id="muni-comparison-container" class="overflow-x-auto">
-                    <table class="w-full text-left text-xs text-slate-700">
-                        <thead id="muni-comp-head" class="bg-red-50 text-red-900 font-bold border-b border-red-200">
-                            <!-- Injected by JS -->
-                        </thead>
-                        <tbody id="muni-comp-body" class="divide-y divide-slate-100">
-                            <!-- Injected by JS -->
-                        </tbody>
-                    </table>
                 </div>
             </section>
 
@@ -621,11 +524,11 @@
                 <!-- JS injected mappings -->
             </div>
 
-            <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+            <div class="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
                 <span id="mapper-warning-msg" class="text-xs text-amber-600 font-semibold"></span>
                 <div class="flex items-center space-x-2">
                     <button onclick="closeMapperModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">Cancelar</button>
-                    <button onclick="confirmColumnMapping()" class="px-5 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg shadow transition">Processar Planilha</button>
+                    <button id="process-planilha-button" onclick="confirmColumnMapping()" class="px-5 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg shadow transition">Processar Planilha</button>
                 </div>
             </div>
         </div>
