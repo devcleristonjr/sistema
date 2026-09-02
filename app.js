@@ -134,15 +134,6 @@
             }
         }
 
-        const STATUS_OPTIONS = [
-            'ATENDIDO',
-            'EM_ABERTO',
-            'EM_ESTUDO',
-            'CONVENIO',
-            'LICITACAO',
-            'CANCELADO'
-        ];
-
         const STATUS_LABELS = {
             ATENDIDO: 'Atendido',
             EM_ABERTO: 'Em Aberto',
@@ -178,18 +169,7 @@
             return 'EM_ABERTO';
         }
 
-        function normalizeAreaValue(rawArea) {
-            const value = normalizeText(rawArea, 'Infraestrutura e Geral');
-            const cleaned = value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-            if (cleaned.includes('educ') || cleaned.includes('esporte')) return 'Educação e Esporte';
-            if (cleaned.includes('agua') || cleaned.includes('sane') || cleaned.includes('dren') || cleaned.includes('esgoto')) return 'Saneamento, Drenagem e Água';
-            if (cleaned.includes('infra') || cleaned.includes('mobil') || cleaned.includes('transp') || cleaned.includes('paviment')) return 'Infraestrutura e Mobilidade';
-            if (cleaned.includes('habit') || cleaned.includes('urban') || cleaned.includes('lagoa') || cleaned.includes('praca')) return 'Habitação e Urbanização';
-            if (cleaned.includes('rural') || cleaned.includes('mercado') || cleaned.includes('feira') || cleaned.includes('agric')) return 'Desenvolvimento Rural e Feiras';
-            if (cleaned.includes('saude') || cleaned.includes('segur') || cleaned.includes('policia') || cleaned.includes('ubs')) return 'Saúde e Segurança Pública';
-            return value || 'Infraestrutura e Geral';
-        }
+        
 
         function getPriorityLabel(priorityValue) {
             return PRIORITY_LABELS[String(priorityValue || '').toUpperCase()] || 'Baixa';
@@ -283,9 +263,7 @@
             return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
         }
 
-        function formatMillions(val) {
-            return `R$ ${(val / 1000000).toFixed(1)} Mi`;
-        }
+        
 
         const ui = {
             get(id) {
@@ -362,7 +340,7 @@
                 const normDesc = normalizeText(item.desc || item.descricao || item.pleito || "Sem Descrição");
                 const normVal = parseNumericValue(item.val ?? item.valor ?? item.valorTratado ?? 0);
                 const normStatusRaw = normalizeText(item.status || item.situacao || "Em Aberto");
-                const stdStatus = classifyStatus(normStatusRaw);
+                const stdStatus = normalizeStatusValue(normStatusRaw);
                 const normArea = normalizeText(item.area || item.eixo || classifyAreaByText(normDesc));
                 const priority = computePriority(normVal, stdStatus);
 
@@ -394,9 +372,7 @@
         }
 
         // RULE-BASED CLASSIFICATION ENGINE
-        function classifyStatus(rawStatus) {
-            return normalizeStatusValue(rawStatus);
-        }
+        
 
         function classifyAreaByText(desc) {
             const d = normalizeText(desc, '').toLowerCase();
@@ -624,14 +600,7 @@
             applyFilters();
         }
 
-        function formatCurrencyForWhatsApp(value) {
-            return new Intl.NumberFormat('pt-BR', {
-                style: 'currency',
-                currency: 'BRL',
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }).format(Number(value || 0));
-        }
+        
 
         function pluralize(count, singular, plural) {
             return count === 1 ? singular : plural;
@@ -671,17 +640,17 @@
                     const licitacaoValue = licitacao.reduce((sum, item) => sum + item.val, 0);
 
                     if (attended.length) {
-                        lines.push(`✅ *Atendidos — ${attended.length}* — *${formatCurrencyForWhatsApp(attendedValue)}*`);
+                        lines.push(`✅ *Atendidos — ${attended.length}* — *${formatBRL(attendedValue)}*`);
                     }
                     if (convenio.length) {
-                        lines.push(`🔵 *Convênio — ${convenio.length}* — *${formatCurrencyForWhatsApp(convenioValue)}*`);
+                        lines.push(`🔵 *Convênio — ${convenio.length}* — *${formatBRL(convenioValue)}*`);
                     }
                     if (licitacao.length) {
-                        lines.push(`🟡 *Licitação — ${licitacao.length}* — *${formatCurrencyForWhatsApp(licitacaoValue)}*`);
+                        lines.push(`🟡 *Licitação — ${licitacao.length}* — *${formatBRL(licitacaoValue)}*`);
                     }
                     if (open.length) {
                         const openLabel = open.length === 1 ? 'Em aberto' : 'Em aberto';
-                        const openValueText = openValue > 0 ? ` — *${formatCurrencyForWhatsApp(openValue)}*` : '';
+                        const openValueText = openValue > 0 ? ` — *${formatBRL(openValue)}*` : '';
                         lines.push(`🔴 *${openLabel} — ${open.length}*${openValueText}`);
                     }
                 } else {
@@ -695,11 +664,11 @@
                     statusGroups.forEach((group) => {
                         if (!group.items.length) return;
                         const totalValue = group.items.reduce((sum, item) => sum + item.val, 0);
-                        const totalText = group.valueField && totalValue > 0 ? ` — *${formatCurrencyForWhatsApp(totalValue)}*` : '';
+                        const totalText = group.valueField && totalValue > 0 ? ` — *${formatBRL(totalValue)}*` : '';
                         lines.push(`${group.emoji} *${group.label} — ${group.items.length}*${totalText}`);
                         group.items.forEach((item) => {
                             const desc = item.desc ? item.desc.replace(/\s+/g, ' ').trim() : 'Sem descrição';
-                            const suffix = item.val > 0 ? ` — *${formatCurrencyForWhatsApp(item.val)}*` : '';
+                            const suffix = item.val > 0 ? ` — *${formatBRL(item.val)}*` : '';
                             lines.push(`• ${item.organ} — ${desc}${suffix}`);
                         });
                     });
@@ -731,7 +700,7 @@
             if (totalConvenio) lines.push(`• 🔵 ${totalConvenio} em convênio`);
             if (totalLicitacao) lines.push(`• 🟡 ${totalLicitacao} em licitação`);
             lines.push('');
-            lines.push(`💰 *Valor total atendido: ${formatCurrencyForWhatsApp(valorAtendidos)}*`);
+            lines.push(`💰 *Valor total atendido: ${formatBRL(valorAtendidos)}*`);
             lines.push('━━━━━━━━━━━━━━');
 
             return lines.join('\n');
