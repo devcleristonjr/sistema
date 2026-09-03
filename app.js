@@ -1,84 +1,8 @@
 
-        // DEFAULT DATASET (183 Records from Médio Rio de Contas Report)
-        const DEFAULT_DATASET = [
-            { muni: "Dário Meira", organ: "CONDER", desc: "Obra de Macrodrenagem de Canal para o Rio Gongoji (Novo PAC)", val: 22875029.55, status: "Concluído", area: "Saneamento, Drenagem e Água" },
-            { muni: "Dário Meira", organ: "SEC", desc: "Nova Sede do Colégio Estadual de Tempo Integral", val: 14081647.00, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Dário Meira", organ: "CONDER", desc: "Construção de 145 Unidades Habitacionais (Bahia Minha Casa / Convênios)", val: 19100000.00, status: "Concluído", area: "Habitação e Urbanização" },
-            { muni: "Dário Meira", organ: "CERB", desc: "Sistema de Água em Ibitupã e ETA Dário Meira", val: 4210000.00, status: "Concluído", area: "Saneamento, Drenagem e Água" },
-            { muni: "Dário Meira", organ: "CAR", desc: "Reforma do Mercado Municipal e Feira", val: 1500000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
-            { muni: "Dário Meira", organ: "CAR", desc: "Equipamentos Agrícolas e Unidades Agroindustriais", val: 800000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
-            { muni: "Dário Meira", organ: "CONDER", desc: "Novo Mercado Municipal", val: 0, status: "Em Aberto", area: "Desenvolvimento Rural e Feiras" },
-            { muni: "Dário Meira", organ: "SESAB", desc: "Reforma da UBS Centro", val: 0, status: "Em Aberto", area: "Saúde e Segurança Pública" },
-            { muni: "Dário Meira", organ: "PMBA / SSP", desc: "Unidade Integrada da Delegacia Territorial e Pelotão PM", val: 0, status: "Em Aberto", area: "Saúde e Segurança Pública" },
-            { muni: "Dário Meira", organ: "EMBASA", desc: "Sistema de Água no Ponto Novo (30 km da Sede)", val: 0, status: "Em Aberto", area: "Saneamento, Drenagem e Água" },
-
-            { muni: "Ipiaú", organ: "SEINFRA", desc: "Recuperação da Pista de Pouso do Aeródromo", val: 13703688.45, status: "Concluído", area: "Infraestrutura e Mobilidade" },
-            { muni: "Ipiaú", organ: "EMBASA", desc: "Implantação de Sistema de Esgotamento Sanitário (Ruas W. Sampaio e Pensilvânia)", val: 13706320.33, status: "Concluído", area: "Saneamento, Drenagem e Água" },
-            { muni: "Ipiaú", organ: "SEINFRA", desc: "Pavimentação do Acesso BA-650 a Fazenda do Povo", val: 11767147.94, status: "Concluído", area: "Infraestrutura e Mobilidade" },
-            { muni: "Ipiaú", organ: "SEC", desc: "Complexo Poliesportivo Cultural Dr. Salvador da Matta", val: 9067132.15, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Ipiaú", organ: "CONDER", desc: "121 Unidades Habitacionais no Bairro Santa Rita", val: 8956177.15, status: "Concluído", area: "Habitação e Urbanização" },
-            { muni: "Ipiaú", organ: "SEC", desc: "Nova Sede do Colégio Estadual de Tempo Integral", val: 7590709.05, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Ipiaú", organ: "SESAB", desc: "Reforma e Ampliação do Hospital Geral de Ipiaú", val: 0, status: "Em Aberto", area: "Saúde e Segurança Pública" },
-            { muni: "Ipiaú", organ: "SEINFRA", desc: "Restauração/Ponte do Bairro da Conceição para BR-330", val: 0, status: "Em Aberto", area: "Infraestrutura e Mobilidade" },
-            { muni: "Ipiaú", organ: "EMBASA", desc: "Ampliação da 1ª Etapa do SIAA Ipiaú", val: 0, status: "Em Aberto", area: "Saneamento, Drenagem e Água" },
-            { muni: "Ipiaú", organ: "CAR", desc: "Galpão e Casas de Fermentação de Cacau em Córrego das Pedras", val: 0, status: "Em Aberto", area: "Desenvolvimento Rural e Feiras" },
-
-            { muni: "Aiquara", organ: "SEINFRA", desc: "Pavimentação Asfáltica (CBUQ) na BA-558", val: 14759709.24, status: "Concluído", area: "Infraestrutura e Mobilidade" },
-            { muni: "Aiquara", organ: "SEC", desc: "Creche Proinfância Tipo 1", val: 6500000.00, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Aiquara", organ: "SEC", desc: "Modernização do Colégio Estadual CEA", val: 4750000.00, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Aiquara", organ: "SEINFRA", desc: "Pavimentação na BA-647", val: 2400000.00, status: "Concluído", area: "Infraestrutura e Mobilidade" },
-            { muni: "Aiquara", organ: "CAR", desc: "Reforma do Mercado Municipal", val: 2400000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
-            { muni: "Aiquara", organ: "EMBASA", desc: "Nova Estação de Tratamento de Água - ETA EMBASA", val: 3590000.00, status: "Em Aberto", area: "Saneamento, Drenagem e Água" },
-            { muni: "Aiquara", organ: "CAR", desc: "11 Habitações Rurais em Pindorama", val: 487520.58, status: "Em Aberto", area: "Habitação e Urbanização" },
-
-            { muni: "Itamari", organ: "SEC", desc: "Nova Unidade Escolar de Tempo Integral Col. João Galvão", val: 20249404.83, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Itamari", organ: "EMBASA", desc: "Ampliação e Melhorias no Sistema de Abastecimento de Água", val: 8495066.44, status: "Concluído", area: "Saneamento, Drenagem e Água" },
-            { muni: "Itamari", organ: "CONDER", desc: "Obras de Contenção de Encostas", val: 1850000.00, status: "Concluído", area: "Infraestrutura e Mobilidade" },
-            { muni: "Itamari", organ: "CAR", desc: "Praça da Feira e Mercado de Carne", val: 1480000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
-            { muni: "Itamari", organ: "SUDESB", desc: "Construção do Novo Ginásio de Esportes", val: 0, status: "Em Aberto", area: "Educação e Esporte" },
-
-            { muni: "Apuarema", organ: "SEC", desc: "Nova Sede do Colégio Estadual Dr. Vasco Filho", val: 7238425.88, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Apuarema", organ: "SEINFRA", desc: "Acesso Pavimentado ao Colégio", val: 3220000.00, status: "Concluído", area: "Infraestrutura e Mobilidade" },
-            { muni: "Apuarema", organ: "CAR", desc: "Reforma do Centro de Abastecimento Municipal", val: 3080000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
-            { muni: "Apuarema", organ: "SUDESB", desc: "Quadra Poliesportiva Coberta no Loteamento José Novaes", val: 2070000.00, status: "Concluído", area: "Educação e Esporte" },
-
-            { muni: "Jitaúna", organ: "SEC", desc: "Reforma do Centro de Ed. Fundamental II Maria Eleonora Cajahyba", val: 11892932.06, status: "Convênio", area: "Educação e Esporte" },
-            { muni: "Jitaúna", organ: "SESAB", desc: "Construção de UBS Tipo I", val: 1710000.00, status: "Concluído", area: "Saúde e Segurança Pública" },
-            { muni: "Jitaúna", organ: "CONDER", desc: "Pavimentação do Bairro Muniz", val: 1320000.00, status: "Concluído", area: "Infraestrutura e Mobilidade" },
-            { muni: "Jitaúna", organ: "CONDER", desc: "Construção de 50 Unidades Habitacionais no Bairro Gilberto Lopes", val: 8043492.63, status: "Em Aberto", area: "Habitação e Urbanização" },
-
-            { muni: "Nova Ibiá", organ: "CERB", desc: "Sistemas de Água CERB: Putumuju/Ganduzinho", val: 3570000.00, status: "Concluído", area: "Saneamento, Drenagem e Água" },
-            { muni: "Nova Ibiá", organ: "CONDER", desc: "Construção da Praça de Eventos", val: 1580000.00, status: "Concluído", area: "Habitação e Urbanização" },
-            { muni: "Nova Ibiá", organ: "SUDESB", desc: "Reforma do Estádio Valdivino José Brás", val: 890000.00, status: "Concluído", area: "Educação e Esporte" },
-
-            { muni: "Ubatá", organ: "SEC", desc: "Modernização do Colégio Estadual de Ubatá", val: 12574740.94, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Ubatá", organ: "SUDESB", desc: "Areninha Society e Praça do Trabalhador", val: 1730424.82, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Ubatá", organ: "CONDER", desc: "26 Unidades Habitacionais no Bairro Comissão", val: 0, status: "Em Aberto", area: "Habitação e Urbanização" },
-
-            { muni: "Itagibá", organ: "SEC", desc: "Modernização do Colégio Estadual Dulce Almeida", val: 7587419.24, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Itagibá", organ: "PMBA / SSP", desc: "Pelotão da Polícia Militar", val: 1399459.43, status: "Concluído", area: "Saúde e Segurança Pública" },
-            { muni: "Itagibá", organ: "CONDER", desc: "Pavimentação Asfáltica no Bairro Kleber Barreto", val: 4573946.56, status: "Em Aberto", area: "Infraestrutura e Mobilidade" },
-
-            { muni: "Itagi", organ: "SEC", desc: "Reforma/Ampliação da Escola Municipal Walter Mascarenhas", val: 4950000.00, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Itagi", organ: "CAR", desc: "Cobertura da Praça da Feira Livre", val: 2390000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
-
-            { muni: "Ibirataia", organ: "SEC", desc: "Complexo Poliesportivo Educacional", val: 6430000.00, status: "Licitação", area: "Educação e Esporte" },
-            { muni: "Ibirataia", organ: "CONDER", desc: "61 Unidades Habitacionais no Bairro José Firmino", val: 4400000.00, status: "Em Aberto", area: "Habitação e Urbanização" },
-            { muni: "Ibirataia", organ: "PMBA / SSP", desc: "Unidade Integrada da Delegacia e Pelotão PM", val: 2920000.00, status: "Em Aberto", area: "Saúde e Segurança Pública" },
-            { muni: "Ibirataia", organ: "CONDER", desc: "Urbanização da Lagoa", val: 2680000.00, status: "Concluído", area: "Habitação e Urbanização" },
-
-            { muni: "Barra do Rocha", organ: "CONDER", desc: "Pavimentação em Paralelepípedo nos Bairros Ananias e Lagoa", val: 2332600.09, status: "Em Aberto", area: "Infraestrutura e Mobilidade" },
-            { muni: "Barra do Rocha", organ: "SUDESB", desc: "Quadra Coberta no Assentamento Coroa Verde", val: 1940000.00, status: "Concluído", area: "Educação e Esporte" },
-            { muni: "Barra do Rocha", organ: "CONDER", desc: "25 Unidades Habitacionais no Bairro Ananias Maciel", val: 1850000.00, status: "Concluído", area: "Habitação e Urbanização" },
-
-            { muni: "Gongogi", organ: "CAR", desc: "Requalificação da Unidade de Beneficiamento de Frutas em Santa Irene", val: 1280000.00, status: "Concluído", area: "Desenvolvimento Rural e Feiras" },
-            { muni: "Gongogi", organ: "EMBASA", desc: "Elaboração do Projeto Básico de Ampliação do SAA Gongogi", val: 0, status: "Em Aberto", area: "Saneamento, Drenagem e Água" }
-        ];
-
         // GLOBAL APPLICATION STATE
         const AppState = {
             viewMode: 'executive', // 'executive' | 'analyst'
-            datasetLabel: "Médio Rio de Contas (Dados Relatório Padrão)",
+            datasetLabel: "Nenhuma planilha carregada",
             rawRecords: [],
             normalizedRecords: [],
             filteredRecords: [],
@@ -114,23 +38,6 @@
                 localStorage.setItem(DASHBOARD_DATASET_KEY, JSON.stringify(payload));
             } catch (error) {
                 console.warn('Não foi possível persistir a planilha do dashboard.', error);
-            }
-        }
-
-        function restoreDashboardDataset() {
-            try {
-                const saved = JSON.parse(localStorage.getItem(DASHBOARD_DATASET_KEY) || 'null');
-                if (!saved || !Array.isArray(saved.rawRecords) || !saved.rawRecords.length) return false;
-
-                // A base padrão do sistema deve ter prioridade na abertura.
-                // Dados antigos em localStorage não devem vencer o Banco.xlsx do projeto.
-                if (saved.datasetLabel === 'Banco.xlsx') return false;
-
-                loadInitialDataset(saved.rawRecords, saved.datasetLabel || 'Base Salva do Usuário');
-                return true;
-            } catch (error) {
-                console.warn('Não foi possível restaurar a planilha salva do dashboard.', error);
-                return false;
             }
         }
 
@@ -512,52 +419,41 @@
             }
         };
 
-        async function loadPresetBancoSpreadsheet() {
-            // A abertura do app deve priorizar sempre a planilha Banco.xlsx do diretório do programa.
-            // Dados antigos em localStorage podem deixar o sistema lento e carregar a base errada.
-            try {
-                const response = await fetch('./Banco.xlsx', { cache: 'no-store' });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                const buffer = await response.arrayBuffer();
-                const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-
-                if (!rows || !rows.length) throw new Error('Planilha vazia');
-
-                const mappedRows = rows.map((row) => ({
-                    muni: normalizeText(row.MUNICIPIO || row.municipio || row.Municipio || row['Município'], 'Não Especificado'),
-                    territorio: normalizeText(row.TERRITORIO || row.territorio || row['Território'] || row['territorio de identidade'] || row.territory, 'não consta'),
-                    organ: normalizeText(row.ÓRGÃO || row.ORGAO || row.orgao || row['Órgão'] || row['Secretaria'], 'Geral'),
-                    desc: normalizeText(row.PLEITO || row.descricao || row['Descrição'] || row.objeto || row['Pleito'], 'Sem Descrição'),
-                    val: parseNumericValue(row.VALOR || row.valor || row['Valor'] || 0),
-                    status: normalizeText(row.SITUACAO || row['SITUAÇÃO'] || row.status || row['Status'] || 'Em Aberto', 'Em Aberto'),
-                    area: normalizeText(row.area || row['Área'] || row['Área Temática'] || classifyAreaByText(row.PLEITO || row.descricao || row['Descrição'] || ''), 'Infraestrutura e Geral')
-                }));
-
-                const hygienized = hygienizeMunicipioAndTerritorioRows(mappedRows);
-                loadInitialDataset(hygienized, 'Banco.xlsx');
-                saveDashboardDataset();
-                return;
-            } catch (error) {
-                console.warn('Não foi possível carregar o Banco.xlsx padrão. Usando a base interna.', error);
+        function updateEmptyDatasetUI() {
+            const scoreEl = ui.get('quality-score-badge');
+            if (scoreEl) {
+                scoreEl.innerHTML = '<span>—</span><span class="text-[9px] uppercase font-normal">Score</span>';
             }
 
-            loadInitialDataset(DEFAULT_DATASET, 'Médio Rio de Contas (Dados Relatório Padrão)');
-            saveDashboardDataset();
+            ui.text('dataset-name-label', 'Base Ativa: Nenhuma planilha carregada');
+            ui.text('dataset-stats-summary', 'Nenhuma planilha carregada • Importe uma planilha para começar');
+            ui.text('kpi-exec-muni-count', '0 municípios');
+            ui.text('active-filters-count', 'Sem dados carregados');
+
+            const alerts = ui.get('data-quality-alerts');
+            if (alerts) {
+                alerts.innerHTML = '<span class="bg-slate-500/15 text-slate-300 border border-slate-500/30 rounded-full px-2 py-1">Aguardando planilha</span>';
+            }
         }
 
         // INITIALIZATION
         function initApp() {
+            // Inicialização leve: nenhuma planilha ou dataset é carregado automaticamente.
+            // Os dados só entram no sistema após uma importação manual pelo usuário.
+            AppState.datasetLabel = 'Nenhuma planilha carregada';
+            AppState.rawRecords = [];
+            AppState.normalizedRecords = [];
+            AppState.filteredRecords = [];
+            AppState.pendingUploadedJson = null;
+            AppState.datasetOrigin = null;
+            AppState.qualityScore = 0;
+
             restoreDashboardState();
             initMobileMenu();
             bindFilterInputs();
             bindSummaryModalControls();
 
-            // Sempre carregar a base padrão do projeto na abertura.
-            // Isso evita o uso de dados antigos salvos e reduz a inicialização lenta.
-            loadPresetBancoSpreadsheet();
+            updateEmptyDatasetUI();
         }
 
         if (document.readyState === 'loading') {
@@ -610,7 +506,7 @@
             AppState.datasetLabel = label;
             AppState.rawRecords = rawList;
             AppState.pendingUploadedJson = rawList;
-            AppState.datasetOrigin = label !== 'Médio Rio de Contas (Dados Relatório Padrão)' ? 'imported' : 'default';
+            AppState.datasetOrigin = 'imported';
             AppState.filters = { municipality: 'ALL', municipalityMulti: [], organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
             saveDashboardDataset();
             
