@@ -846,7 +846,9 @@
                 quickSelect.value = validQuickValue;
             }
 
-            renderMunicipalityMultiSelector();
+            if (typeof renderMunicipalityMultiSelector === 'function') {
+                renderMunicipalityMultiSelector();
+            }
         }
 
         function populateFilterOptions() {
@@ -1435,6 +1437,7 @@
 
         function renderTopInvestmentsTable(data) {
             const tbody = document.getElementById('table-top-investments-body');
+            if (!tbody) return;
             tbody.innerHTML = '';
             const topList = [...data].sort((a,b) => b.val - a.val).slice(0, 15);
 
