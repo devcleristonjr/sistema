@@ -1,4 +1,3 @@
-
 // GLOBAL APPLICATION STATE
 const AppState = {
     viewMode: 'executive', // 'executive' | 'analyst'
@@ -6,7 +5,6 @@ const AppState = {
     rawRecords: [],
     normalizedRecords: [],
     filteredRecords: [],
-    selectedCitiesForComparison: [],
     showGeneralExecutiveTable: true,
     qualityScore: 100,
     fieldStats: {},
@@ -18,7 +16,6 @@ const AppState = {
     columnMappings: {},
     filters: {
         municipality: 'ALL',
-        municipalityMulti: [],
         organ: 'ALL',
         status: 'ALL',
         area: 'ALL',
@@ -45,7 +42,6 @@ function saveDashboardState() {
     try {
         const payload = {
             filters: AppState.filters,
-            selectedCitiesForComparison: AppState.selectedCitiesForComparison,
             viewMode: AppState.viewMode
         };
         localStorage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(payload));
@@ -57,24 +53,9 @@ function saveDashboardState() {
 function restoreDashboardState() {
     try {
         const saved = JSON.parse(localStorage.getItem(DASHBOARD_STORAGE_KEY) || 'null');
-        if (!saved) {
-            AppState.filters = { municipality: 'ALL', municipalityMulti: [], organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
-            return;
-        }
-
-        AppState.filters = {
-            municipality: 'ALL',
-            municipalityMulti: [],
-            organ: 'ALL',
-            status: 'ALL',
-            area: 'ALL',
-            search: ''
-        };
-        AppState.selectedCitiesForComparison = Array.isArray(saved.selectedCitiesForComparison) ? saved.selectedCitiesForComparison : [];
-        AppState.viewMode = saved.viewMode === 'analyst' ? 'analyst' : 'executive';
+        AppState.viewMode = saved?.viewMode === 'analyst' ? 'analyst' : 'executive';
     } catch (error) {
         console.warn('Não foi possível restaurar o estado salvo do dashboard.', error);
-        AppState.filters = { municipality: 'ALL', municipalityMulti: [], organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
     }
 }
 
@@ -103,15 +84,12 @@ const MUNICIPALITY_ALIASES = {
     'ipiacu': 'Ipiaú',
     'piau': 'Ipiaú',
     'abaira': 'Abaíra',
-    'abaira': 'Abaíra',
     'abare': 'Abaré',
     'abaré': 'Abaré',
     'aiquara': 'Aiquara',
     'anage': 'Anagé',
     'anagé': 'Anagé',
     'barra do rocha': 'Barra do Rocha',
-    'barra do rocha': 'Barra do Rocha',
-    'sento se': 'Sento Sé',
     'sento se': 'Sento Sé',
     'sento sé': 'Sento Sé',
     'vitoria da conquista': 'Vitória da Conquista',
@@ -125,14 +103,11 @@ const MUNICIPALITY_ALIASES = {
     'varzea': 'Várzea',
     'ibirataia': 'Ibirataia',
     'ibira': 'Ibirataia',
-    'ibirataia': 'Ibirataia',
     'itamari': 'Itamari',
     'itagi': 'Itagi',
     'itagiba': 'Itagibá',
-    'itagiba': 'Itagibá',
     'jitauna': 'Jitaúna',
     'jitaúna': 'Jitaúna',
-    'nova ibia': 'Nova Ibiá',
     'nova ibia': 'Nova Ibiá',
     'ubata': 'Ubatá',
     'gongogi': 'Gongogi',
@@ -140,7 +115,6 @@ const MUNICIPALITY_ALIASES = {
     'itapetinga': 'Itapetinga',
     'camacari': 'Camaçari',
     'camaçari': 'Camaçari',
-    'feira de santana': 'Feira de Santana',
     'feira de santana': 'Feira de Santana',
     'caetite': 'Caateté',
     'caateté': 'Caateté'
@@ -160,7 +134,6 @@ const TERRITORY_ALIASES = {
     'litoral sul': 'Litoral Sul',
     'sul da bahia': 'Sul da Bahia',
     'extremo sul': 'Extremo Sul',
-    'vale do sao francisco': 'Vale do São Francisco',
     'campo alegre de lourdes': 'Campo Alegre de Lourdes'
 };
 
@@ -169,8 +142,7 @@ function getStatusLabel(statusValue) {
 }
 
 function normalizeStatusValue(rawStatus) {
-    const value = normalizeText(rawStatus, 'EM_ABERTO');
-    const cleaned = value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const cleaned = stripDiacritics(normalizeText(rawStatus, 'EM_ABERTO')).toLowerCase();
 
     if (cleaned.includes('conclu') || cleaned.includes('atendid') || cleaned.includes('entreg') || cleaned.includes('finaliz')) return 'ATENDIDO';
     if (cleaned.includes('conven')) return 'CONVENIO';
@@ -180,8 +152,6 @@ function normalizeStatusValue(rawStatus) {
     if (cleaned.includes('cancel')) return 'CANCELADO';
     return 'EM_ABERTO';
 }
-
-
 
 function getPriorityLabel(priorityValue) {
     return PRIORITY_LABELS[String(priorityValue || '').toUpperCase()] || 'Baixa';
@@ -238,20 +208,21 @@ function canonicalizeDisplayName(value, fallback = '') {
     const raw = normalizeText(value, fallback);
     if (!raw) return fallback;
 
-    const cleaned = raw
+    const parts = raw
         .replace(/\s+/g, ' ')
         .replace(/\s*[-–—]\s*/g, ' ')
-        .trim();
-
-    const parts = cleaned.split(' ').filter(Boolean).map((part, index) => {
-        const lower = part.toLowerCase();
-        const capitalized = lower.charAt(0).toUpperCase() + lower.slice(1);
-        if (index === 0) return capitalized;
-        if (['da', 'de', 'do', 'dos', 'das', 'e', 'em', 'na', 'no', 'a', 'ao', 'as', 'os'].includes(lower.toLowerCase())) {
-            return lower.toLowerCase();
-        }
-        return capitalized;
-    });
+        .trim()
+        .split(' ')
+        .filter(Boolean)
+        .map((part, index) => {
+            const lower = part.toLowerCase();
+            const capitalized = lower.charAt(0).toUpperCase() + lower.slice(1);
+            if (index === 0) return capitalized;
+            if (['da', 'de', 'do', 'dos', 'das', 'e', 'em', 'na', 'no', 'a', 'ao', 'as', 'os'].includes(lower)) {
+                return lower;
+            }
+            return capitalized;
+        });
 
     return parts.join(' ');
 }
@@ -263,12 +234,7 @@ function normalizeMunicipioName(value, fallback = 'Não Especificado') {
     const key = normalizeNameKey(raw);
     if (!key) return fallback;
 
-    const normalizedKey = key.replace(/\s+/g, ' ').trim();
-    const direct = MUNICIPALITY_ALIASES[normalizedKey];
-    if (direct) return direct;
-
-    const base = canonicalizeDisplayName(raw, fallback);
-    return base;
+    return MUNICIPALITY_ALIASES[key] || canonicalizeDisplayName(raw, fallback);
 }
 
 function normalizeTerritorioName(value, fallback = 'não consta') {
@@ -278,12 +244,7 @@ function normalizeTerritorioName(value, fallback = 'não consta') {
     const key = normalizeNameKey(raw);
     if (!key) return fallback;
 
-    const normalizedKey = key.replace(/\s+/g, ' ').trim();
-    const direct = TERRITORY_ALIASES[normalizedKey];
-    if (direct) return direct;
-
-    const base = canonicalizeDisplayName(raw, fallback);
-    return base;
+    return TERRITORY_ALIASES[key] || canonicalizeDisplayName(raw, fallback);
 }
 
 function hygienizeMunicipioAndTerritorioRows(rows) {
@@ -323,24 +284,6 @@ function hygienizeMunicipioAndTerritorioRows(rows) {
     });
 
     return nextRows;
-}
-
-function renderAliasPreview() {
-    const panel = document.getElementById('alias-preview-panel');
-    const list = document.getElementById('alias-preview-list');
-    if (!panel || !list) return;
-
-    const entries = [
-        ...Object.entries(MUNICIPALITY_ALIASES).slice(0, 12),
-        ...Object.entries(TERRITORY_ALIASES).slice(0, 8)
-    ];
-
-    list.innerHTML = entries.map(([key, value]) => {
-        const label = key.toLowerCase() === 'dario' ? 'Município' : 'Território';
-        return `<div class="flex items-center justify-between gap-3 rounded-lg bg-white/60 px-2 py-1 border border-amber-200"><span class="font-bold text-amber-900">${key}</span><span class="text-amber-700">→</span><span class="text-amber-800">${value}</span><span class="text-[9px] uppercase tracking-wider text-amber-600">${label}</span></div>`;
-    }).join('');
-
-    panel.classList.remove('hidden');
 }
 
 function parseNumericValue(value) {
@@ -393,8 +336,6 @@ function formatBRL(val) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
 }
 
-
-
 const ui = {
     get(id) {
         return document.getElementById(id);
@@ -402,11 +343,6 @@ const ui = {
     text(id, value) {
         const el = this.get(id);
         if (el) el.textContent = value;
-        return el;
-    },
-    html(id, value) {
-        const el = this.get(id);
-        if (el) el.innerHTML = value;
         return el;
     },
     width(id, value) {
@@ -423,20 +359,16 @@ function updateEmptyDatasetUI() {
 
 // INITIALIZATION
 function initApp() {
-    // Inicialização leve: nenhuma planilha ou dataset é carregado automaticamente.
-    // Os dados só entram no sistema após uma importação manual pelo usuário.
     AppState.datasetLabel = 'Nenhuma planilha carregada';
     AppState.rawRecords = [];
     AppState.normalizedRecords = [];
     AppState.filteredRecords = [];
     AppState.pendingUploadedJson = null;
-    AppState.datasetOrigin = null;
     AppState.qualityScore = 0;
 
     restoreDashboardState();
     initMobileMenu();
     bindFilterInputs();
-    bindSummaryModalControls();
 
     updateEmptyDatasetUI();
 }
@@ -490,8 +422,7 @@ function loadInitialDataset(rawList, label) {
     AppState.datasetLabel = label;
     AppState.rawRecords = rawList;
     AppState.pendingUploadedJson = rawList;
-    AppState.datasetOrigin = 'imported';
-    AppState.filters = { municipality: 'ALL', municipalityMulti: [], organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
+    AppState.filters = { municipality: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
     saveDashboardDataset();
 
     // 1. Normalize Records preserving original values
@@ -533,8 +464,6 @@ function loadInitialDataset(rawList, label) {
 }
 
 // RULE-BASED CLASSIFICATION ENGINE
-
-
 function classifyAreaByText(desc) {
     const d = normalizeText(desc, '').toLowerCase();
     if (d.includes("escola") || d.includes("colegio") || d.includes("quadra") || d.includes("ginasio") || d.includes("creche")) return "Educação e Esporte";
@@ -636,7 +565,6 @@ function stringSimilarity(s1, s2) {
 function bindFilterInputs() {
     document.getElementById('filter-municipality').addEventListener('change', (e) => {
         AppState.filters.municipality = e.target.value;
-        AppState.filters.municipalityMulti = [];
         applyFilters();
     });
 
@@ -681,7 +609,6 @@ function applyFilters() {
     const f = AppState.filters;
     AppState.filteredRecords = AppState.normalizedRecords.filter(r => {
         const matchMuni = f.municipality === 'ALL' || r.muni === f.municipality;
-
         const matchOrgan = f.organ === 'ALL' || r.organ === f.organ;
         const matchStatus = matchesStatusFilter(r.statusStd, f.status);
         const matchArea = f.area === 'ALL' || r.area === f.area;
@@ -719,9 +646,7 @@ function renderActivePills() {
         container.appendChild(pill);
     };
 
-    if (f.municipality !== 'ALL') {
-        addPill(`Município: ${f.municipality}`, 'municipality');
-    }
+    if (f.municipality !== 'ALL') addPill(`Município: ${f.municipality}`, 'municipality');
     if (f.organ !== 'ALL') addPill(`Órgão: ${f.organ}`, 'organ');
     if (f.status !== 'ALL') addPill(`Situação: ${f.status}`, 'status');
     if (f.area !== 'ALL') addPill(`Área: ${f.area}`, 'area');
@@ -736,7 +661,6 @@ function clearSingleFilter(key) {
         document.getElementById('filter-search').value = '';
     } else if (key === 'municipality') {
         AppState.filters.municipality = 'ALL';
-        AppState.filters.municipalityMulti = [];
         document.getElementById('filter-municipality').value = 'ALL';
     } else {
         AppState.filters[key] = 'ALL';
@@ -746,93 +670,13 @@ function clearSingleFilter(key) {
 }
 
 function resetAllFilters() {
-    AppState.filters = { municipality: 'ALL', municipalityMulti: [], organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
+    AppState.filters = { municipality: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
     document.getElementById('filter-municipality').value = 'ALL';
     document.getElementById('filter-organ').value = 'ALL';
     document.getElementById('filter-status').value = 'ALL';
     document.getElementById('filter-area').value = 'ALL';
     document.getElementById('filter-search').value = '';
     applyFilters();
-}
-
-
-
-function pluralize(count, singular, plural) {
-    return count === 1 ? singular : plural;
-}
-
-function buildSummaryTextByMunicipality(sourceRecords, mode = 'compact') {
-    const groupedByMunicipality = {};
-
-    sourceRecords.forEach((record) => {
-        if (!groupedByMunicipality[record.muni]) {
-            groupedByMunicipality[record.muni] = [];
-        }
-        groupedByMunicipality[record.muni].push(record);
-    });
-
-    const municipalityOrder = Object.keys(groupedByMunicipality).sort((a, b) => {
-        const totalB = groupedByMunicipality[b].reduce((sum, item) => sum + item.val, 0);
-        const totalA = groupedByMunicipality[a].reduce((sum, item) => sum + item.val, 0);
-        return totalB - totalA;
-    });
-
-    const lines = [];
-
-    municipalityOrder.forEach((municipio) => {
-        const items = groupedByMunicipality[municipio];
-        const attended = items.filter((item) => item.statusStd === 'ATENDIDO').sort((a, b) => b.val - a.val);
-        const convenio = items.filter((item) => item.statusStd === 'CONVENIO').sort((a, b) => b.val - a.val);
-        const licitacao = items.filter((item) => item.statusStd === 'LICITACAO').sort((a, b) => b.val - a.val);
-        const open = items.filter((item) => ['EM_ABERTO', 'EM_ESTUDO'].includes(item.statusStd)).sort((a, b) => b.val - a.val);
-
-        lines.push(`📍 *${municipio.toUpperCase()}*`);
-
-        if (mode === 'compact') {
-            const attendedValue = attended.reduce((sum, item) => sum + item.val, 0);
-            const openValue = open.reduce((sum, item) => sum + item.val, 0);
-            const convenioValue = convenio.reduce((sum, item) => sum + item.val, 0);
-            const licitacaoValue = licitacao.reduce((sum, item) => sum + item.val, 0);
-
-            if (attended.length) {
-                lines.push(`✅ *Atendidos — ${attended.length}* — *${formatBRL(attendedValue)}*`);
-            }
-            if (convenio.length) {
-                lines.push(`🔵 *Convênio — ${convenio.length}* — *${formatBRL(convenioValue)}*`);
-            }
-            if (licitacao.length) {
-                lines.push(`🟡 *Licitação — ${licitacao.length}* — *${formatBRL(licitacaoValue)}*`);
-            }
-            if (open.length) {
-                const openLabel = open.length === 1 ? 'Em aberto' : 'Em aberto';
-                const openValueText = openValue > 0 ? ` — *${formatBRL(openValue)}*` : '';
-                lines.push(`🔴 *${openLabel} — ${open.length}*${openValueText}`);
-            }
-        } else {
-            const statusGroups = [
-                { label: 'Atendidos', items: attended, emoji: '✅', valueField: true },
-                { label: 'Convênio', items: convenio, emoji: '🔵', valueField: true },
-                { label: 'Licitação', items: licitacao, emoji: '🟡', valueField: true },
-                { label: 'Em aberto', items: open, emoji: '🔴', valueField: false }
-            ];
-
-            statusGroups.forEach((group) => {
-                if (!group.items.length) return;
-                const totalValue = group.items.reduce((sum, item) => sum + item.val, 0);
-                const totalText = group.valueField && totalValue > 0 ? ` — *${formatBRL(totalValue)}*` : '';
-                lines.push(`${group.emoji} *${group.label} — ${group.items.length}*${totalText}`);
-                group.items.forEach((item) => {
-                    const desc = item.desc ? item.desc.replace(/\s+/g, ' ').trim() : 'Sem descrição';
-                    const suffix = item.val > 0 ? ` — *${formatBRL(item.val)}*` : '';
-                    lines.push(`• ${item.organ} — ${desc}${suffix}`);
-                });
-            });
-        }
-
-        lines.push('');
-    });
-
-    return lines.join('\n');
 }
 
 function formatWhatsAppShortCurrency(value) {
@@ -862,68 +706,35 @@ function formatWhatsAppShortCurrency(value) {
 function getWhatsAppAreaIcon(area) {
     const text = normalizeText(area, '').toLowerCase();
 
-    if (
-        text.includes('infraestrutura') ||
-        text.includes('mobilidade') ||
-        text.includes('rodovia') ||
-        text.includes('estrada')
-    ) {
+    if (text.includes('infraestrutura') || text.includes('mobilidade') || text.includes('rodovia') || text.includes('estrada')) {
         return '🛣️';
     }
 
-    if (
-        text.includes('educação') ||
-        text.includes('educacao') ||
-        text.includes('esporte')
-    ) {
-        if (text.includes('esporte')) return '⚽';
-        return '🎓';
+    if (text.includes('educação') || text.includes('educacao') || text.includes('esporte')) {
+        return text.includes('esporte') ? '⚽' : '🎓';
     }
 
-    if (
-        text.includes('saneamento') ||
-        text.includes('água') ||
-        text.includes('agua') ||
-        text.includes('drenagem')
-    ) {
+    if (text.includes('saneamento') || text.includes('água') || text.includes('agua') || text.includes('drenagem')) {
         return '💧';
     }
 
-    if (
-        text.includes('saúde') ||
-        text.includes('saude')
-    ) {
+    if (text.includes('saúde') || text.includes('saude')) {
         return '🏥';
     }
 
-    if (
-        text.includes('segurança') ||
-        text.includes('seguranca')
-    ) {
+    if (text.includes('segurança') || text.includes('seguranca')) {
         return '🚔';
     }
 
-    if (
-        text.includes('rural') ||
-        text.includes('desenvolvimento')
-    ) {
+    if (text.includes('rural') || text.includes('desenvolvimento')) {
         return '🌾';
     }
 
-    if (
-        text.includes('habitação') ||
-        text.includes('habitacao') ||
-        text.includes('urbanização') ||
-        text.includes('urbanizacao')
-    ) {
+    if (text.includes('habitação') || text.includes('habitacao') || text.includes('urbanização') || text.includes('urbanizacao')) {
         return '🏘️';
     }
 
-    if (
-        text.includes('lazer') ||
-        text.includes('praça') ||
-        text.includes('praca')
-    ) {
+    if (text.includes('lazer') || text.includes('praça') || text.includes('praca')) {
         return '🏞️';
     }
 
@@ -933,11 +744,7 @@ function getWhatsAppAreaIcon(area) {
 function getWhatsAppAreaTitle(area) {
     const text = normalizeText(area, 'Infraestrutura e Geral').toLowerCase();
 
-    if (
-        text.includes('infraestrutura') ||
-        text.includes('mobilidade') ||
-        text.includes('rodovia')
-    ) {
+    if (text.includes('infraestrutura') || text.includes('mobilidade') || text.includes('rodovia')) {
         return 'INFRAESTRUTURA E RODOVIAS';
     }
 
@@ -945,12 +752,7 @@ function getWhatsAppAreaTitle(area) {
         return 'EDUCAÇÃO';
     }
 
-    if (
-        text.includes('saneamento') ||
-        text.includes('água') ||
-        text.includes('agua') ||
-        text.includes('drenagem')
-    ) {
+    if (text.includes('saneamento') || text.includes('água') || text.includes('agua') || text.includes('drenagem')) {
         return 'ÁGUA E SANEAMENTO';
     }
 
@@ -970,12 +772,7 @@ function getWhatsAppAreaTitle(area) {
         return 'DESENVOLVIMENTO RURAL';
     }
 
-    if (
-        text.includes('habitação') ||
-        text.includes('habitacao') ||
-        text.includes('urbanização') ||
-        text.includes('urbanizacao')
-    ) {
+    if (text.includes('habitação') || text.includes('habitacao') || text.includes('urbanização') || text.includes('urbanizacao')) {
         return 'HABITAÇÃO E URBANIZAÇÃO';
     }
 
@@ -1018,7 +815,6 @@ function extractWhatsAppLocation(record) {
 
     const desc = normalizeText(record?.desc, '');
 
-    // Tenta encontrar alguns padrões comuns de localização
     const patterns = [
         /na\s+(Sede[^,.]*)/i,
         /no\s+(Distrito[^,.]*)/i,
@@ -1044,10 +840,6 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
         return '🚨 RESUMO DE INVESTIMENTOS E AÇÕES 🚨\n\nNenhum registro encontrado para o recorte atual.';
     }
 
-    // ------------------------------------------------------------
-    // MUNICÍPIO
-    // ------------------------------------------------------------
-
     const municipalities = [
         ...new Set(
             records
@@ -1062,49 +854,18 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
         municipalityName = municipalities[0].toUpperCase();
     }
 
-    // ------------------------------------------------------------
-    // STATUS
-    // ------------------------------------------------------------
+    const attendedRecords = records.filter(record => isAttendedStatus(record.statusStd));
+    const openRecords = records.filter(record => isOpenStatus(record.statusStd));
+    const licensingRecords = records.filter(record => String(record.statusStd || '').toUpperCase() === 'LICITACAO');
+    const cancelledRecords = records.filter(record => String(record.statusStd || '').toUpperCase() === 'CANCELADO');
 
-    const attendedRecords = records.filter(record =>
-        isAttendedStatus(record.statusStd)
-    );
-
-    const openRecords = records.filter(record =>
-        isOpenStatus(record.statusStd)
-    );
-
-    const licensingRecords = records.filter(record =>
-        String(record.statusStd || '').toUpperCase() === 'LICITACAO'
-    );
-
-    const cancelledRecords = records.filter(record =>
-        String(record.statusStd || '').toUpperCase() === 'CANCELADO'
-    );
-
-    // ------------------------------------------------------------
-    // VALORES
-    // ------------------------------------------------------------
-
-    const attendedValue = attendedRecords.reduce(
-        (total, record) => total + Number(record.val || 0),
-        0
-    );
-
-    const licensingValue = licensingRecords.reduce(
-        (total, record) => total + Number(record.val || 0),
-        0
-    );
-
-    // ------------------------------------------------------------
-    // INÍCIO
-    // ------------------------------------------------------------
+    const attendedValue = attendedRecords.reduce((total, record) => total + Number(record.val || 0), 0);
+    const licensingValue = licensingRecords.reduce((total, record) => total + Number(record.val || 0), 0);
 
     const lines = [];
 
     lines.push(`🚨 RESUMO DE INVESTIMENTOS E AÇÕES – ${municipalityName} 🚨`);
     lines.push('');
-
     lines.push('📊 PANORAMA GERAL');
     lines.push('━━━━━━━━━━━━━━━━━━');
     lines.push(`🔹 Total de pleitos: ${records.length}`);
@@ -1117,18 +878,12 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
         lines.push(`⚫ Cancelados: ${cancelledRecords.length}`);
     }
 
-    // ------------------------------------------------------------
-    // DESTAQUES
-    // ------------------------------------------------------------
-
     const attendedWithValue = attendedRecords
         .filter(record => Number(record.val || 0) > 0)
         .sort((a, b) => Number(b.val || 0) - Number(a.val || 0));
 
-    const attendedWithoutValue = attendedRecords
-        .filter(record => Number(record.val || 0) <= 0);
+    const attendedWithoutValue = attendedRecords.filter(record => Number(record.val || 0) <= 0);
 
-    // Agrupa por área
     const groupedAreas = {};
 
     attendedWithValue.forEach(record => {
@@ -1155,10 +910,6 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
         lines.push('🏆 DESTAQUES – MAIORES INVESTIMENTOS');
         lines.push('━━━━━━━━━━━━━━━━━━');
 
-        // --------------------------------------------------------
-        // ÁREAS COM INVESTIMENTOS
-        // --------------------------------------------------------
-
         areaEntries.forEach(([area, areaRecords]) => {
             if (!areaRecords.length) return;
 
@@ -1179,7 +930,6 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
                 lines.push(organs.join(' / '));
             }
 
-            // Mostra no máximo os 5 maiores daquela área
             areaRecords
                 .sort((a, b) => Number(b.val || 0) - Number(a.val || 0))
                 .slice(0, 5)
@@ -1199,10 +949,6 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
                 });
         });
 
-        // --------------------------------------------------------
-        // VALOR NÃO INFORMADO
-        // --------------------------------------------------------
-
         if (attendedWithoutValue.length > 0) {
             lines.push('');
             lines.push('🏪 VALOR NÃO INFORMADO');
@@ -1220,10 +966,6 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
                 });
         }
     }
-
-    // ------------------------------------------------------------
-    // LICITAÇÃO
-    // ------------------------------------------------------------
 
     if (licensingRecords.length > 0) {
         lines.push('');
@@ -1261,20 +1003,13 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
             });
     }
 
-    // ------------------------------------------------------------
-    // EM ABERTO
-    // ------------------------------------------------------------
-
     if (openRecords.length > 0) {
         lines.push('');
         lines.push('━━━━━━━━━━━━━━━━━━');
         lines.push('🟡 PLEITOS EM ABERTO');
         lines.push('━━━━━━━━━━━━━━━━━━');
 
-        // Primeiro os de maior valor
-        const orderedOpen = [...openRecords].sort(
-            (a, b) => Number(b.val || 0) - Number(a.val || 0)
-        );
+        const orderedOpen = [...openRecords].sort((a, b) => Number(b.val || 0) - Number(a.val || 0));
 
         orderedOpen
             .slice(0, 15)
@@ -1293,10 +1028,6 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
                 lines.push(`➡️ ${shortenWhatsAppDescription(record.desc, 300)}`);
             });
     }
-
-    // ------------------------------------------------------------
-    // RESUMO FINAL
-    // ------------------------------------------------------------
 
     lines.push('');
     lines.push('━━━━━━━━━━━━━━━━━━');
@@ -1318,11 +1049,7 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
         .trim();
 }
 
-function buildSummaryTextByMunicipality(sourceRecords, mode = 'compact') {
-    return buildWhatsAppExecutiveSummary(sourceRecords);
-}
-
-function buildWhatsAppSummaryText(mode = 'compact') {
+function buildWhatsAppSummaryText() {
     const sourceRecords =
         AppState.filteredRecords.length
             ? AppState.filteredRecords
@@ -1331,31 +1058,8 @@ function buildWhatsAppSummaryText(mode = 'compact') {
     return buildWhatsAppExecutiveSummary(sourceRecords);
 }
 
-function bindSummaryModalControls() {
-    const select = document.getElementById('summary-mode-select');
-
-    if (!select) return;
-
-    select.addEventListener('change', () => {
-        const modal = document.getElementById('summary-modal');
-
-        if (modal && !modal.classList.contains('hidden')) {
-            const textarea = document.getElementById('summary-copy-text');
-
-            if (textarea) {
-                textarea.value = buildWhatsAppSummaryText(
-                    select.value || 'compact'
-                );
-            }
-        }
-    });
-}
-
 function openSummaryModal() {
-    const mode =
-        document.getElementById('summary-mode-select')?.value || 'compact';
-
-    const summaryText = buildWhatsAppSummaryText(mode);
+    const summaryText = buildWhatsAppSummaryText();
 
     const modal = document.getElementById('summary-modal');
     const textarea = document.getElementById('summary-copy-text');
@@ -1430,7 +1134,6 @@ function renderExecutiveModeViews() {
     const valOpen = openList.reduce((acc, r) => acc + r.val, 0);
     const avgTicket = totalAttendedCount > 0 ? valAttended / totalAttendedCount : 0;
 
-    // Update KPIs
     ui.text('kpi-exec-total', totalPleitos);
     ui.text('kpi-exec-attended-count', totalAttendedCount);
     ui.text('kpi-exec-rate-badge', `${rate}%`);
@@ -1440,72 +1143,10 @@ function renderExecutiveModeViews() {
     ui.text('kpi-exec-open-count', `${totalOpenCount} Pleitos`);
     ui.text('kpi-exec-val-open', formatBRL(valOpen));
 
-    // Render Insights Narrative
     renderExecutiveInsights(totalPleitos, totalAttendedCount, rate, valAttended, valOpen);
-
-    // Render Pareto Concentration Analysis
     renderParetoAnalysis(data, valAttended);
-
-    // Render Top 15 Major Investments Table
-    renderTopInvestmentsTable(data);
-
-    // Render Open Demands Priority Grid
-    renderPriorityOpenDemandsGrid(openList);
-
-    // Render executive secretariat matrix
     renderExecutiveSecretariatMatrix();
-
-    // Render executive summary strip and full general table
-    renderExecutiveSummaryStrip(data);
     renderGeneralExecutiveTable();
-}
-
-function renderExecutiveSummaryStrip(data) {
-    const container = document.getElementById('executive-summary-strip');
-    const countLabel = document.getElementById('general-table-count-label');
-    if (!container || !countLabel) return;
-
-    const totalPleitos = data.length;
-    const attended = data.filter(r => isAttendedStatus(r.statusStd));
-    const open = data.filter(r => isOpenStatus(r.statusStd));
-    const totalValue = data.reduce((sum, item) => sum + item.val, 0);
-    const attendedValue = attended.reduce((sum, item) => sum + item.val, 0);
-    const openValue = open.reduce((sum, item) => sum + item.val, 0);
-    const topMuni = getTopMuniByVal();
-
-    countLabel.textContent = `${totalPleitos} registros no recorte atual`;
-
-    const cards = [
-        { label: 'Pleitos', value: totalPleitos.toLocaleString('pt-BR'), accent: 'bg-red-50 text-red-800 border-red-200', icon: '📌' },
-        { label: 'Atendidos', value: attended.length.toLocaleString('pt-BR'), accent: 'bg-emerald-50 text-emerald-800 border-emerald-200', icon: '✅' },
-        { label: 'Em aberto', value: open.length.toLocaleString('pt-BR'), accent: 'bg-amber-50 text-amber-800 border-amber-200', icon: '⏳' },
-        { label: 'Valor total', value: formatBRL(totalValue), accent: 'bg-slate-100 text-slate-800 border-slate-200', icon: '💰' },
-        { label: 'Maior município', value: topMuni.name || '—', accent: 'bg-red-100 text-red-900 border-red-200', icon: '📍' }
-    ];
-
-    container.innerHTML = cards.map(card => `
-                <div class="rounded-xl border ${card.accent} px-3 py-3 shadow-sm">
-                    <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
-                        <span>${card.label}</span>
-                        <span>${card.icon}</span>
-                    </div>
-                    <div class="mt-3 text-xl font-black leading-none">${card.value}</div>
-                </div>
-            `).join('');
-
-    if (topMuni?.val > 0) {
-        const municipalityCard = container.querySelectorAll('div.rounded-xl')[4];
-        if (municipalityCard) {
-            municipalityCard.innerHTML = `
-                        <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
-                            <span>Maior município</span>
-                            <span>📍</span>
-                        </div>
-                        <div class="mt-3 text-sm font-black leading-tight">${topMuni.name}</div>
-                        <div class="mt-1 text-[11px] font-semibold opacity-80">${formatBRL(topMuni.val)}</div>
-                    `;
-        }
-    }
 }
 
 function renderExecutiveSecretariatMatrix() {
@@ -1688,177 +1329,6 @@ function renderParetoAnalysis(data, totalAttendedVal) {
     ui.text('pareto-top3-organ-pct', `${top3OrganPct}%`);
     ui.width('pareto-top3-organ-bar', top3OrganPct);
     ui.text('pareto-top3-organ-desc', `Os 3 maiores órgãos gerenciam ${formatBRL(top3OrganVal)} dos investimentos territoriais.`);
-}
-
-function renderTopInvestmentsTable(data) {
-    const tbody = document.getElementById('table-top-investments-body');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    const topList = [...data].sort((a, b) => b.val - a.val).slice(0, 15);
-
-    topList.forEach((item, idx) => {
-        const tr = document.createElement('tr');
-        tr.className = 'hover:bg-slate-50 border-b border-slate-100';
-        tr.innerHTML = `
-                    <td class="p-3 font-black text-red-700">${idx + 1}º</td>
-                    <td class="p-3 font-bold text-slate-800">${item.muni}</td>
-                    <td class="p-3 font-semibold text-slate-600">${item.organ}</td>
-                    <td class="p-3 text-slate-700">${item.desc}</td>
-                    <td class="p-3 text-right font-extrabold text-slate-900">${formatBRL(item.val)}</td>
-                    <td class="p-3 text-center">
-                        <span class="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-bold ${getStatusBadgeClasses(item.statusStd)}">
-                            ${getStatusLabel(item.statusStd)}
-                        </span>
-                    </td>
-                `;
-        tbody.appendChild(tr);
-    });
-}
-
-function renderCityComparisonTool() {
-    const sourceRecords = AppState.filteredRecords.length ? AppState.filteredRecords : AppState.normalizedRecords;
-    const munis = [...new Set(sourceRecords.map(r => r.muni))].sort();
-    const container = document.getElementById('muni-selector-chips');
-    const head = document.getElementById('muni-comp-head');
-    const body = document.getElementById('muni-comp-body');
-
-    if (!container || !head || !body) return;
-
-    container.innerHTML = '';
-
-    if (!AppState.selectedCitiesForComparison.length && munis.length) {
-        const rankedByValue = Object.entries(
-            sourceRecords.reduce((acc, item) => {
-                acc[item.muni] = (acc[item.muni] || 0) + item.val;
-                return acc;
-            }, {})
-        )
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3)
-            .map(([name]) => name);
-
-        AppState.selectedCitiesForComparison = rankedByValue.length ? rankedByValue : munis.slice(0, 3);
-    }
-
-    munis.forEach(m => {
-        const isSelected = AppState.selectedCitiesForComparison.includes(m);
-        const btn = document.createElement('button');
-        btn.className = `px-2.5 py-1 text-xs font-bold rounded-lg border transition ${isSelected ? 'bg-red-600 text-white border-red-600 shadow' : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-red-400'}`;
-        btn.innerText = m;
-        btn.onclick = () => toggleCityComparison(m);
-        container.appendChild(btn);
-    });
-
-    head.innerHTML = '';
-    body.innerHTML = '';
-
-    const selected = AppState.selectedCitiesForComparison.filter(city => munis.includes(city));
-    if (!selected.length && munis.length) {
-        AppState.selectedCitiesForComparison = munis.slice(0, 3);
-    }
-
-    const activeSelected = AppState.selectedCitiesForComparison.filter(city => munis.includes(city));
-
-    if (selected.length === 0) {
-        const trHead = document.createElement('tr');
-        trHead.innerHTML = '<th class="p-3 text-slate-900">Métrica / Indicador</th>';
-        head.appendChild(trHead);
-
-        const emptyRow = document.createElement('tr');
-        emptyRow.innerHTML = '<td class="p-5 text-center text-slate-500">Nenhum município selecionado. Clique nos chips acima para comparar até 5 municípios.</td>';
-        body.appendChild(emptyRow);
-        return;
-    }
-
-    const trHead = document.createElement('tr');
-    trHead.innerHTML = `<th class="p-3 text-slate-900">Métrica / Indicador</th>` + activeSelected.map(c => `<th class="p-3 text-center text-red-800 font-extrabold">${c}</th>`).join('');
-    head.appendChild(trHead);
-
-    const r1 = document.createElement('tr');
-    r1.innerHTML = `<td class="p-3 font-bold text-slate-700">Total de Pleitos Cadastrados</td>` + activeSelected.map(c => {
-        const count = sourceRecords.filter(r => r.muni === c).length;
-        return `<td class="p-3 text-center font-bold">${count}</td>`;
-    }).join('');
-    body.appendChild(r1);
-
-    const r2 = document.createElement('tr');
-    r2.innerHTML = `<td class="p-3 font-bold text-slate-700">Taxa de Atendimento (%)</td>` + activeSelected.map(c => {
-        const all = sourceRecords.filter(r => r.muni === c);
-        const att = all.filter(r => r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO').length;
-        const pct = all.length > 0 ? ((att / all.length) * 100).toFixed(1) : 0;
-        return `<td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-xs font-bold ${pct >= 70 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${pct}%</span></td>`;
-    }).join('');
-    body.appendChild(r2);
-
-    const r3 = document.createElement('tr');
-    r3.innerHTML = `<td class="p-3 font-bold text-slate-700">Valor Atendido (R$)</td>` + activeSelected.map(c => {
-        const val = sourceRecords.filter(r => r.muni === c && (r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO')).reduce((acc, r) => acc + r.val, 0);
-        return `<td class="p-3 text-center font-bold text-emerald-700">${formatBRL(val)}</td>`;
-    }).join('');
-    body.appendChild(r3);
-    saveDashboardState();
-}
-
-function clearCityComparison() {
-    AppState.selectedCitiesForComparison = [];
-    renderCityComparisonTool();
-}
-
-function toggleCityComparison(muniName) {
-    const idx = AppState.selectedCitiesForComparison.indexOf(muniName);
-    if (idx >= 0) {
-        AppState.selectedCitiesForComparison.splice(idx, 1);
-    } else {
-        if (AppState.selectedCitiesForComparison.length >= 5) {
-            alert("Você pode comparar no máximo 5 municípios simultaneamente.");
-            return;
-        }
-        AppState.selectedCitiesForComparison.push(muniName);
-    }
-    saveDashboardState();
-    renderCityComparisonTool();
-}
-
-function renderPriorityOpenDemandsGrid(openList) {
-    const grid = document.getElementById('open-demands-cards-grid');
-    if (!grid) return;
-    grid.innerHTML = '';
-
-    if (openList.length === 0) {
-        grid.innerHTML = '<div class="col-span-3 p-6 text-center text-slate-400 font-semibold bg-white rounded-xl border border-slate-200">Nenhum pleito em aberto foi identificado no recorte atual.</div>';
-        return;
-    }
-
-    const sorted = [...openList].sort((a, b) => b.val - a.val).slice(0, 9);
-
-    sorted.forEach(item => {
-        const card = document.createElement('div');
-        const pColor = item.priority === 'ALTA' ? 'bg-rose-100 text-rose-800 border-rose-300' : (item.priority === 'MÉDIA' || item.priority === 'MEDIA' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-slate-100 text-slate-700 border-slate-300');
-        const areaText = item.area || 'Sem área definida';
-
-        card.className = 'bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 hover:shadow-md transition';
-        card.innerHTML = `
-                    <div class="flex items-start justify-between gap-3">
-                        <span class="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-800">${item.muni}</span>
-                        <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded border ${pColor}">
-                            ${getPriorityLabel(item.priority)}
-                        </span>
-                    </div>
-                    <div class="space-y-2">
-                        <p class="text-[10px] uppercase tracking-wide font-bold text-slate-500">Demanda prioritária</p>
-                        <h5 class="text-xs font-bold text-slate-900 leading-snug">${item.desc}</h5>
-                    </div>
-                    <div class="text-sm font-extrabold text-amber-600">${formatBRL(item.val)}</div>
-                    <div class="flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100 pt-2">
-                        <span>Órgão: <strong>${item.organ}</strong></span>
-                        <span>${getStatusLabel(item.statusStd)}</span>
-                    </div>
-                    <div class="text-[11px] text-slate-500">
-                        <span>Área: <strong>${areaText}</strong></span>
-                    </div>
-                `;
-        grid.appendChild(card);
-    });
 }
 
 // RENDER MODO ANALISTA
@@ -2056,7 +1526,7 @@ function handleSpreadsheetUpload(file) {
     reader.readAsArrayBuffer(file);
 }
 
-function autoDetectColumnsAndOpenMapper(json, filename) {
+function autoDetectColumnsAndOpenMapper(json) {
     const sample = json[0] || {};
     const keys = Object.keys(sample);
 
@@ -2077,7 +1547,6 @@ function autoDetectColumnsAndOpenMapper(json, filename) {
         territorio: findBestMatch(['territorio', 'territorio de identidade', 'territory'])
     };
 
-    // Render Mapper Modal UI
     const container = document.getElementById('mapper-fields-list');
     container.innerHTML = '';
 
@@ -2122,7 +1591,7 @@ function confirmColumnMapping() {
         area: getVal('area')
     };
 
-    AppState.filters = { municipality: 'ALL', municipalityMulti: [], organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
+    AppState.filters = { municipality: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
     const filterMunicipio = document.getElementById('filter-municipality');
     if (filterMunicipio) filterMunicipio.value = 'ALL';
 
@@ -2132,7 +1601,7 @@ function confirmColumnMapping() {
     }
 
     const parsedList = AppState.pendingUploadedJson
-        .map((row, index) => {
+        .map((row) => {
             const rawMuni = normalizeText(row[mappings.muni], 'Não Especificado');
             const rawTerritorio = normalizeText(row[mappings.territorio], 'não consta');
             const rawOrgan = normalizeText(row[mappings.organ], 'Geral');
@@ -2177,7 +1646,6 @@ function closeMapperModal() {
 function exportMultiTabExcel() {
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1: Base Tratada
     const dataBase = AppState.filteredRecords.map(r => ({
         ID: r.id,
         Município: r.muni,
@@ -2191,7 +1659,6 @@ function exportMultiTabExcel() {
     const wsBase = XLSX.utils.json_to_sheet(dataBase);
     XLSX.utils.book_append_sheet(wb, wsBase, "Base Tratada");
 
-    // Sheet 2: Resumo Executivo
     const summary = [
         { Indicador: "Total de Pleitos", Valor: AppState.filteredRecords.length },
         { Indicador: "Investimento Atendido", Valor: AppState.filteredRecords.filter(r => r.statusStd === 'ATENDIDO').reduce((a, b) => a + b.val, 0) },
