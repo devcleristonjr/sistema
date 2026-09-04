@@ -217,9 +217,6 @@ function getStatusBadgeClasses(statusValue) {
     }
 }
 
-// CHART INSTANCES
-let chartExecMuni = null, chartExecArea = null, chartExecOrgan = null, chartExecStatus = null;
-
 function normalizeText(value, fallback = '') {
     if (value === null || value === undefined) return fallback;
     return String(value).trim();
@@ -420,20 +417,8 @@ const ui = {
 };
 
 function updateEmptyDatasetUI() {
-    const scoreEl = ui.get('quality-score-badge');
-    if (scoreEl) {
-        scoreEl.innerHTML = '<span>—</span><span class="text-[9px] uppercase font-normal">Score</span>';
-    }
-
-    ui.text('dataset-name-label', 'Base Ativa: Nenhuma planilha carregada');
-    ui.text('dataset-stats-summary', 'Nenhuma planilha carregada • Importe uma planilha para começar');
     ui.text('kpi-exec-muni-count', '0 municípios');
     ui.text('active-filters-count', 'Sem dados carregados');
-
-    const alerts = ui.get('data-quality-alerts');
-    if (alerts) {
-        alerts.innerHTML = '<span class="bg-slate-500/15 text-slate-300 border border-slate-500/30 rounded-full px-2 py-1">Aguardando planilha</span>';
-    }
 }
 
 // INITIALIZATION
@@ -497,7 +482,6 @@ function scheduleDatasetAnalysis() {
     AppState.datasetAnalysisTimer = setTimeout(() => {
         auditDataQuality();
         detectDuplicates();
-        auditDataQuality();
     }, 0);
 }
 
@@ -586,12 +570,11 @@ function auditDataQuality() {
     const total = AppState.normalizedRecords.length;
     if (total === 0) {
         AppState.qualityScore = 0;
-        updateDataQualityAlerts([]);
+        AppState.fieldStats = {};
         return;
     }
 
     let muniValid = 0, organValid = 0, descValid = 0, valValid = 0, statusValid = 0;
-    const warnings = [];
 
     AppState.normalizedRecords.forEach(r => {
         if (r.muni && r.muni !== "Não Especificado") muniValid++;
@@ -600,14 +583,6 @@ function auditDataQuality() {
         if (typeof r.val === 'number' && !isNaN(r.val) && r.val >= 0) valValid++;
         if (r.statusRaw) statusValid++;
     });
-
-    if (AppState.detectedDuplicates && AppState.detectedDuplicates.length > 0) {
-        warnings.push(`${AppState.detectedDuplicates.length} duplicidade(s) suspeita(s)`);
-    }
-    if ((total - muniValid) > 0) warnings.push('Município ausente em alguns registros');
-    if ((total - descValid) > 0) warnings.push('Descrição incompleta em alguns registros');
-    if ((total - statusValid) > 0) warnings.push('Status ausente em alguns registros');
-    if ((total - valValid) > 0) warnings.push('Valores inválidos ou vazios');
 
     AppState.fieldStats = {
         muni: Math.round((muniValid / total) * 100),
@@ -619,28 +594,6 @@ function auditDataQuality() {
 
     const avg = (AppState.fieldStats.muni + AppState.fieldStats.organ + AppState.fieldStats.desc + AppState.fieldStats.val + AppState.fieldStats.status) / 5;
     AppState.qualityScore = Math.round(avg);
-
-    const scoreEl = ui.get('quality-score-badge');
-    if (scoreEl) {
-        scoreEl.innerHTML = `<span>${AppState.qualityScore}%</span><span class="text-[9px] uppercase font-normal">Score</span>`;
-    }
-    ui.text('dataset-name-label', `Base Ativa: ${AppState.datasetLabel}`);
-    ui.text('dataset-stats-summary', `${total} registros analíticos • Quality Score: ${AppState.qualityScore}%`);
-    updateDataQualityAlerts(warnings);
-}
-
-function updateDataQualityAlerts(warnings) {
-    const el = document.getElementById('data-quality-alerts');
-    if (!el) return;
-
-    if (!warnings || warnings.length === 0) {
-        el.innerHTML = '<span class="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 rounded-full px-2 py-1">Dados consistentes</span>';
-        return;
-    }
-
-    el.innerHTML = warnings.slice(0, 3).map(item =>
-        `<span class="bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-full px-2 py-1">${item}</span>`
-    ).join('');
 }
 
 // SIMILARITY DUPLICATE DETECTOR
@@ -680,46 +633,13 @@ function stringSimilarity(s1, s2) {
 }
 
 // FILTERS ENGINE
-function applySelectedMunicipalityReport() {
-    if (!AppState.normalizedRecords.length) {
-        alert('Nenhuma base de dados está carregada no momento.');
-        return;
-    }
-
-    const selectedSingle = AppState.filters.municipality || 'ALL';
-
-    if (selectedSingle !== 'ALL') {
-        applyFilters();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-    }
-
-    alert('Selecione um município antes de gerar o relatório.');
-}
-
 function bindFilterInputs() {
-    const singleSelect = document.getElementById('default-municipality-selector');
-
     document.getElementById('filter-municipality').addEventListener('change', (e) => {
         AppState.filters.municipality = e.target.value;
         AppState.filters.municipalityMulti = [];
-        if (singleSelect) singleSelect.value = e.target.value;
         applyFilters();
     });
 
-    if (singleSelect) {
-        singleSelect.addEventListener('change', (e) => {
-            AppState.filters.municipality = e.target.value;
-            AppState.filters.municipalityMulti = [];
-            const filterSelect = document.getElementById('filter-municipality');
-            if (filterSelect) filterSelect.value = e.target.value;
-            applyFilters();
-        });
-    }
-
-    document.getElementById('apply-selected-municipality-report').addEventListener('click', () => {
-        applySelectedMunicipalityReport();
-    });
     document.getElementById('filter-organ').addEventListener('change', (e) => { AppState.filters.organ = e.target.value; applyFilters(); });
     document.getElementById('filter-status').addEventListener('change', (e) => { AppState.filters.status = e.target.value; applyFilters(); });
     document.getElementById('filter-area').addEventListener('change', (e) => { AppState.filters.area = e.target.value; applyFilters(); });
@@ -728,22 +648,12 @@ function bindFilterInputs() {
 
 function syncMunicipalitySelectors() {
     const filterSelect = document.getElementById('filter-municipality');
-    const quickSelect = document.getElementById('default-municipality-selector');
     const selectedValue = AppState.filters.municipality || 'ALL';
 
     if (filterSelect) {
         const validValue = [...filterSelect.options].some(option => option.value === selectedValue) ? selectedValue : 'ALL';
         filterSelect.value = validValue;
         AppState.filters.municipality = validValue;
-    }
-
-    if (quickSelect) {
-        const validQuickValue = [...quickSelect.options].some(option => option.value === selectedValue) ? selectedValue : 'ALL';
-        quickSelect.value = validQuickValue;
-    }
-
-    if (typeof renderMunicipalityMultiSelector === 'function') {
-        renderMunicipalityMultiSelector();
     }
 }
 
@@ -755,12 +665,6 @@ function populateFilterOptions() {
     const selMuni = document.getElementById('filter-municipality');
     selMuni.innerHTML = '<option value="ALL">Todos os Municípios</option>';
     munis.forEach(m => selMuni.add(new Option(m, m)));
-
-    const quickSelect = document.getElementById('default-municipality-selector');
-    if (quickSelect) {
-        quickSelect.innerHTML = '<option value="ALL">Todos</option>';
-        munis.forEach(m => quickSelect.add(new Option(m, m)));
-    }
 
     const selOrgan = document.getElementById('filter-organ');
     selOrgan.innerHTML = '<option value="ALL">Todos os Órgãos</option>';
@@ -810,8 +714,8 @@ function renderActivePills() {
     const addPill = (label, key) => {
         count++;
         const pill = document.createElement('span');
-        pill.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-md border border-red-200';
-        pill.innerHTML = `${label} <button onclick="clearSingleFilter('${key}')" class="text-red-600 hover:text-red-900 font-bold">&times;</button>`;
+        pill.className = 'filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 text-red-800 text-xs font-bold rounded-md';
+        pill.innerHTML = `${label} <button onclick="clearSingleFilter('${key}')" class="text-red-600 hover:text-red-900 font-bold" aria-label="Remover filtro ${label}">&times;</button>`;
         container.appendChild(pill);
     };
 
@@ -834,7 +738,6 @@ function clearSingleFilter(key) {
         AppState.filters.municipality = 'ALL';
         AppState.filters.municipalityMulti = [];
         document.getElementById('filter-municipality').value = 'ALL';
-        document.getElementById('default-municipality-selector').value = 'ALL';
     } else {
         AppState.filters[key] = 'ALL';
         document.getElementById(`filter-${key}`).value = 'ALL';
@@ -845,7 +748,6 @@ function clearSingleFilter(key) {
 function resetAllFilters() {
     AppState.filters = { municipality: 'ALL', municipalityMulti: [], organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
     document.getElementById('filter-municipality').value = 'ALL';
-    document.getElementById('default-municipality-selector').value = 'ALL';
     document.getElementById('filter-organ').value = 'ALL';
     document.getElementById('filter-status').value = 'ALL';
     document.getElementById('filter-area').value = 'ALL';
@@ -1541,9 +1443,6 @@ function renderExecutiveModeViews() {
     // Render Insights Narrative
     renderExecutiveInsights(totalPleitos, totalAttendedCount, rate, valAttended, valOpen);
 
-    // Render Executive Charts
-    renderExecutiveCharts(data);
-
     // Render Pareto Concentration Analysis
     renderParetoAnalysis(data, valAttended);
 
@@ -1701,7 +1600,7 @@ function renderGeneralExecutiveTable() {
                     <td class="p-3 text-slate-700">${item.desc}</td>
                     <td class="p-3 text-right font-extrabold text-slate-900">${formatBRL(item.val)}</td>
                     <td class="p-3 text-center">
-                        <span class="px-2 py-0.5 text-[10px] font-bold rounded ${getStatusBadgeClasses(item.statusStd)}">
+                        <span class="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-bold ${getStatusBadgeClasses(item.statusStd)}">
                             ${getStatusLabel(item.statusStd)}
                         </span>
                     </td>
@@ -1761,34 +1660,6 @@ function getTopOrganByVal() {
     return { name: topName, val: maxVal };
 }
 
-function renderExecutiveCharts(data) {
-    const organMap = {};
-    data.forEach(r => {
-        organMap[r.organ] = (organMap[r.organ] || 0) + r.val;
-    });
-    const sortedOrgan = Object.entries(organMap).sort((a, b) => b[1] - a[1]);
-
-    if (chartExecOrgan) chartExecOrgan.destroy();
-    chartExecOrgan = new Chart(document.getElementById('chartExecOrgan').getContext('2d'), {
-        type: 'bar',
-        data: {
-            labels: sortedOrgan.map(x => x[0]),
-            datasets: [{
-                label: 'Investimento (R$ Mi)',
-                data: sortedOrgan.map(x => Number((x[1] / 1000000).toFixed(2))),
-                backgroundColor: '#10b981',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } }
-        }
-    });
-}
-
 function renderParetoAnalysis(data, totalAttendedVal) {
     const muniMap = {};
     data.forEach(r => {
@@ -1835,7 +1706,7 @@ function renderTopInvestmentsTable(data) {
                     <td class="p-3 text-slate-700">${item.desc}</td>
                     <td class="p-3 text-right font-extrabold text-slate-900">${formatBRL(item.val)}</td>
                     <td class="p-3 text-center">
-                        <span class="px-2 py-0.5 text-[10px] font-bold rounded ${getStatusBadgeClasses(item.statusStd)}">
+                        <span class="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-bold ${getStatusBadgeClasses(item.statusStd)}">
                             ${getStatusLabel(item.statusStd)}
                         </span>
                     </td>
@@ -2074,7 +1945,7 @@ function renderFullAnalyticsTable() {
                     <td class="p-3 font-semibold text-slate-600">${r.organ}</td>
                     <td class="p-3 text-slate-700">${r.desc}</td>
                     <td class="p-3 text-right font-bold text-slate-900">${formatBRL(r.val)}</td>
-                    <td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${getStatusBadgeClasses(r.statusStd)}">${getStatusLabel(r.statusStd)}</span></td>
+                    <td class="p-3 text-center"><span class="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-bold ${getStatusBadgeClasses(r.statusStd)}">${getStatusLabel(r.statusStd)}</span></td>
                     <td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${getPriorityBadgeClasses(r.priority)}">${getPriorityLabel(r.priority)}</span></td>
                     <td class="p-3 text-center"><button class="text-red-600 hover:underline font-bold">Audit</button></td>
                 `;
@@ -2253,9 +2124,7 @@ function confirmColumnMapping() {
 
     AppState.filters = { municipality: 'ALL', municipalityMulti: [], organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
     const filterMunicipio = document.getElementById('filter-municipality');
-    const quickMunicipio = document.getElementById('default-municipality-selector');
     if (filterMunicipio) filterMunicipio.value = 'ALL';
-    if (quickMunicipio) quickMunicipio.value = 'ALL';
 
     if (!mappings.muni || !mappings.desc) {
         document.getElementById('mapper-warning-msg').innerText = "⚠ Selecione colunas válidas para Município e Descrição.";
@@ -2325,7 +2194,6 @@ function exportMultiTabExcel() {
     // Sheet 2: Resumo Executivo
     const summary = [
         { Indicador: "Total de Pleitos", Valor: AppState.filteredRecords.length },
-        { Indicador: "Score de Qualidade", Valor: `${AppState.qualityScore}%` },
         { Indicador: "Investimento Atendido", Valor: AppState.filteredRecords.filter(r => r.statusStd === 'ATENDIDO').reduce((a, b) => a + b.val, 0) },
         { Indicador: "Investimento em Aberto", Valor: AppState.filteredRecords.filter(r => r.statusStd === 'EM_ABERTO').reduce((a, b) => a + b.val, 0) }
     ];

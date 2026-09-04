@@ -1,16 +1,15 @@
 <!DOCTYPE html>
 <html lang="pt-BR" class="scroll-smooth">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitoramento de Investimentos</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- SheetJS (xlsx) CDN for Parsing and Multi-Sheet Export -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Monitoramento de Investimentos</title>
+        <!-- Tailwind CSS CDN -->
+        <script src="https://cdn.tailwindcss.com"></script>
+        <!-- SheetJS (xlsx) CDN for Parsing and Multi-Sheet Export -->
+        <script
+            src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+        <script>
         tailwind.config = {
             theme: {
                 extend: {
@@ -30,574 +29,818 @@
             }
         }
     </script>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col selection:bg-red-600 selection:text-white">
+        <link rel="stylesheet" href="styles.css">
+    </head>
+    <body
+        class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col selection:bg-red-600 selection:text-white">
 
-    <!-- Chosen Palette: Warm Neutral Executive Palette (Slate #0f172a / Sky #0284c7 / Emerald #10b981 / Amber #f59e0b / Rose #e11d48) -->
-    <!-- Application Structure Plan: Dual-mode single page web app (Modo Executivo & Modo Analista). Features automated column mapping modal, dataset quality auditing score (0-100%), similarity-based duplicate detection, priority matrix classification, Pareto concentration metrics, multi-city comparison view, multi-tab Excel export (SheetJS), and print-optimized PDF generation. -->
-    <!-- Visualization & Content Choices: Canvas-based Chart.js charts for Investimento por Município, Área Temática, Órgão, and Estágios. HTML/Tailwind custom UI for progress bars, priority badges, quality metrics, comparison matrix, and filter pills. Confirming NO SVG / NO Mermaid JS used. -->
-    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+        <!-- Chosen Palette: Warm Neutral Executive Palette (Slate #0f172a / Sky #0284c7 / Emerald #10b981 / Amber #f59e0b / Rose #e11d48) -->
+        <!-- Application Structure Plan: Dual-mode single page web app (Modo Executivo & Modo Analista). Features automated column mapping modal, dataset quality auditing score (0-100%), similarity-based duplicate detection, priority matrix classification, Pareto concentration metrics, multi-city comparison view, multi-tab Excel export (SheetJS), and print-optimized PDF generation. -->
+        <!-- Visualization & Content Choices: HTML/Tailwind custom UI for progress bars, priority badges, quality metrics, comparison matrix, and filter pills. Confirming NO SVG / NO Mermaid JS used. -->
+        <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
 
-    <!-- Top Sticky Header Navigation -->
-    <header class="sticky top-0 z-40 bg-gradient-to-r from-red-900 via-red-800 to-red-700 text-white shadow-md border-b border-red-600/60">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <!-- Brand Title -->
-                <div class="flex items-center space-x-3">
-                    <div class="w-9 h-9 rounded-lg bg-red-600 text-white font-black flex items-center justify-center text-xl shadow-inner">
-                        RI
-                    </div>
-                    <div>
-                        <h1 class="text-base sm:text-lg font-bold tracking-tight leading-none text-white">Relatório de Inteligência</h1>
-                        <p class="text-xs text-red-200">Análise, Tratamento & Monitoramento de Investimentos</p>
-                    </div>
-                </div>
-
-                <!-- Mode Switcher & Global Actions -->
-                <div class="hidden md:flex items-center space-x-3">
-                    <!-- Mode Selector Pills -->
-                    <div class="bg-red-950/40 p-1 rounded-lg flex items-center border border-red-300/30 backdrop-blur-sm">
-                        <button id="btn-mode-exec" onclick="switchViewMode('executive')" class="px-3 py-1.5 text-xs font-bold rounded-md bg-red-600 text-white shadow transition">
-                            &#128200; Modo Executivo
-                        </button>
-                        <button id="btn-mode-analyst" onclick="switchViewMode('analyst')" class="px-3 py-1.5 text-xs font-bold rounded-md text-slate-400 hover:text-white transition">
-                            &#128269; Modo Analista
-                        </button>
+        <!-- Top Sticky Header Navigation -->
+        <header
+            class="sticky top-0 z-40 bg-gradient-to-r from-red-900 via-red-800 to-red-700 text-white shadow-md border-b border-red-600/60">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <!-- Brand Title -->
+                    <div class="flex items-center space-x-3">
+                        <div
+                            class="w-9 h-9 rounded-lg bg-red-600 text-white font-black flex items-center justify-center text-xl shadow-inner">
+                            RI
+                        </div>
+                        <div>
+                            <h1
+                                class="text-base sm:text-lg font-bold tracking-tight leading-none text-white">Relatório
+                                de Inteligência</h1>
+                            <p class="text-xs text-red-200">Análise, Tratamento
+                                & Monitoramento de Investimentos</p>
+                        </div>
                     </div>
 
-                    <!-- Export Dropdown / Buttons -->
-                    <div class="flex items-center space-x-2 border-l border-red-300/30 pl-3">
-                        <button onclick="exportMultiTabExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition flex items-center gap-1.5 no-print" title="Exportar Excel Tratado (.xlsx) com múltiplas abas">
-                            <span>&#128202;</span> Excel Tratado
+                    <!-- Mode Switcher & Global Actions -->
+                    <div class="hidden md:flex items-center space-x-3">
+                        <!-- Mode Selector Pills -->
+                        <div
+                            class="bg-red-950/40 p-1 rounded-lg flex items-center border border-red-300/30 backdrop-blur-sm">
+                            <button id="btn-mode-exec"
+                                onclick="switchViewMode('executive')"
+                                class="px-3 py-1.5 text-xs font-bold rounded-md bg-red-600 text-white shadow transition">
+                                &#128200; Modo Executivo
+                            </button>
+                            <button id="btn-mode-analyst"
+                                onclick="switchViewMode('analyst')"
+                                class="px-3 py-1.5 text-xs font-bold rounded-md text-slate-400 hover:text-white transition">
+                                &#128269; Modo Analista
+                            </button>
+                        </div>
+
+                        <!-- Export Dropdown / Buttons -->
+                        <div
+                            class="flex items-center space-x-2 border-l border-red-300/30 pl-3">
+                            <button onclick="exportMultiTabExcel()"
+                                class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition flex items-center gap-1.5 no-print"
+                                title="Exportar Excel Tratado (.xlsx) com múltiplas abas">
+                                <span>&#128202;</span> Excel Tratado
+                            </button>
+                            <button onclick="window.print()"
+                                class="bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition flex items-center gap-1.5 no-print"
+                                title="Gerar PDF do relatório ativo">
+                                <span>&#128438;</span> PDF Executivo
+                            </button>
+                            <button onclick="generateWhatsAppSummary()"
+                                class="bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition flex items-center gap-1.5 no-print"
+                                title="Gerar resumo formatado para WhatsApp">
+                                <span>&#128241;</span> Resumo WhatsApp
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Mobile Menu Button -->
+                    <div class="md:hidden flex items-center gap-2">
+                        <button onclick="window.print()"
+                            class="bg-red-600 text-white font-bold px-2.5 py-1.5 rounded-lg text-xs shadow no-print">
+                            &#128438; PDF
                         </button>
-                        <button onclick="window.print()" class="bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition flex items-center gap-1.5 no-print" title="Gerar PDF do relatório ativo">
-                            <span>&#128438;</span> PDF Executivo
-                        </button>
-                        <button onclick="generateWhatsAppSummary()" class="bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition flex items-center gap-1.5 no-print" title="Gerar resumo formatado para WhatsApp">
-                            <span>&#128241;</span> Resumo WhatsApp
+                        <button id="mobile-menu-btn"
+                            class="p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-800">
+                            &#9776;
                         </button>
                     </div>
                 </div>
+            </div>
 
-                <!-- Mobile Menu Button -->
-                <div class="md:hidden flex items-center gap-2">
-                    <button onclick="window.print()" class="bg-red-600 text-white font-bold px-2.5 py-1.5 rounded-lg text-xs shadow no-print">
-                        &#128438; PDF
-                    </button>
-                    <button id="mobile-menu-btn" class="p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-800">
-                        &#9776;
-                    </button>
+            <!-- Mobile Navigation Drawer -->
+            <div id="mobile-menu"
+                class="hidden md:hidden bg-gradient-to-b from-red-900 via-red-800 to-red-700 border-t border-red-600/60 px-4 pt-2 pb-4 space-y-2 text-sm">
+                <div class="flex gap-2">
+                    <button onclick="switchViewMode('executive')"
+                        class="w-1/2 py-2 text-xs font-bold rounded bg-red-600 text-white">Modo
+                        Executivo</button>
+                    <button onclick="switchViewMode('analyst')"
+                        class="w-1/2 py-2 text-xs font-bold rounded bg-slate-800 text-slate-300">Modo
+                        Analista</button>
+                </div>
+                <div class="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                    <button onclick="exportMultiTabExcel()"
+                        class="w-full py-2 bg-emerald-600 text-white text-xs font-bold rounded">Exportar
+                        Excel Tratado (.xlsx)</button>
+                    <button onclick="generateWhatsAppSummary()"
+                        class="w-full py-2 bg-emerald-500 text-white text-xs font-bold rounded">Resumo
+                        WhatsApp</button>
                 </div>
             </div>
-        </div>
+        </header>
 
-        <!-- Mobile Navigation Drawer -->
-        <div id="mobile-menu" class="hidden md:hidden bg-gradient-to-b from-red-900 via-red-800 to-red-700 border-t border-red-600/60 px-4 pt-2 pb-4 space-y-2 text-sm">
-            <div class="flex gap-2">
-                <button onclick="switchViewMode('executive')" class="w-1/2 py-2 text-xs font-bold rounded bg-red-600 text-white">Modo Executivo</button>
-                <button onclick="switchViewMode('analyst')" class="w-1/2 py-2 text-xs font-bold rounded bg-slate-800 text-slate-300">Modo Analista</button>
-            </div>
-            <div class="pt-2 border-t border-slate-800 flex flex-col gap-2">
-                <button onclick="exportMultiTabExcel()" class="w-full py-2 bg-emerald-600 text-white text-xs font-bold rounded">Exportar Excel Tratado (.xlsx)</button>
-                <button onclick="generateWhatsAppSummary()" class="w-full py-2 bg-emerald-500 text-white text-xs font-bold rounded">Resumo WhatsApp</button>
-            </div>
-        </div>
-    </header>
+        <!-- Main Container -->
+        <main
+            class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
 
-    <!-- Main Container -->
-    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+            <!-- Top Quick Import Banner -->
+            <div
+                class="relative overflow-hidden rounded-2xl text-white shadow-[0_20px_45px_rgba(20,10,35,0.28)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 border border-white/[0.08] bg-[linear-gradient(115deg,#450a0a_0%,#7f1d1d_35%,#1e1b4b_85%,#0f172a_100%)]">
+                <!-- Decorative glows -->
+                <div
+                    class="pointer-events-none absolute -top-16 -left-16 w-56 h-56 rounded-full bg-red-500/15 blur-3xl"></div>
+                <div
+                    class="pointer-events-none absolute -bottom-20 right-1/4 w-64 h-64 rounded-full bg-indigo-500/10 blur-3xl"></div>
 
-        <!-- Top Status & Quality Quick Alert Banner -->
-        <div id="global-quality-alert" class="bg-gradient-to-r from-red-950 via-red-900 to-slate-900 text-white rounded-xl p-4 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-red-700/40">
-            <div class="flex items-center space-x-3">
-                <div id="quality-score-badge" class="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex flex-col items-center justify-center font-extrabold text-sm">
-                    <span>—</span>
-                    <span class="text-[9px] uppercase font-normal">Score</span>
+                <div class="relative flex items-center gap-4 min-w-0">
+                    <div
+                        class="w-9 h-9 rotate-45 rounded-2xl bg-white/[0.08] border border-white/[0.12] backdrop-blur-sm flex items-center justify-center">
+                        <svg class="w-4 h-4 text-red-300/70" fill="none"
+                            stroke="currentColor" stroke-width="2"
+                            viewBox="0 0 24 24" stroke-linecap="round"
+                            stroke-linejoin="round"><path d="M12 3v12" /><path
+                                d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>
+                    </div>
+                    <div class="min-w-0">
+                        <h3
+                            class="font-bold text-[15px] leading-tight text-white/95 tracking-tight">
+                            Importação de Planilhas</h3>
+                        <p class="text-xs text-white/55 mt-1">Importe uma
+                            planilha para começar a análise dos dados</p>
+                    </div>
                 </div>
-                <div>
-                    <h3 id="dataset-name-label" class="font-bold text-sm text-slate-100">Base Ativa: Nenhuma planilha carregada</h3>
-                    <p id="dataset-stats-summary" class="text-xs text-slate-400">Nenhuma planilha carregada • Importe uma planilha para começar</p>
-                    <div id="data-quality-alerts" class="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-300"></div>
-                </div>
-            </div>
-            <div class="flex flex-col xl:flex-row items-stretch xl:items-center gap-2 w-full xl:w-auto justify-end">
-                <div class="flex items-center gap-2 bg-slate-800/80 border border-slate-700 rounded-lg px-2 py-1.5 min-w-[190px]">
-                    <label for="default-municipality-selector" class="text-[10px] font-bold uppercase tracking-[0.14em] text-red-200 whitespace-nowrap">Município</label>
-                    <select id="default-municipality-selector" class="w-full bg-slate-900/60 text-white text-xs border border-slate-600 rounded-md px-2 py-1.5 focus:ring-2 focus:ring-red-500 focus:outline-none">
-                        <option value="ALL">Todos</option>
-                    </select>
-                </div>
-                <button id="apply-selected-municipality-report" onclick="applySelectedMunicipalityReport()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition no-print flex items-center gap-1.5">
-                    <span>&#128202;</span> Gerar Relatório
+
+                <button
+                    onclick="document.getElementById('file-input').click()"
+                    class="bg-white/10 hover:bg-white/20 border border-white/15 text-white font-bold px-5 py-2.5 rounded-xl text-xs backdrop-blur-sm transition-all duration-200 no-print flex items-center justify-center gap-2 hover:-translate-y-0.5 active:translate-y-0 whitespace-nowrap">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor"
+                        stroke-width="2" viewBox="0 0 24 24"
+                        stroke-linecap="round" stroke-linejoin="round"><path
+                            d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path
+                            d="M5 21h14" /></svg>
+                    Importar Nova Planilha
                 </button>
-                <button onclick="document.getElementById('file-input').click()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-red-300 font-bold px-3 py-1.5 rounded-lg text-xs transition no-print flex items-center gap-1.5">
-                    <span>&#128194;</span> Importar Nova Planilha
-                </button>
-                <input type="file" id="file-input" accept=".xlsx, .xls, .csv" class="hidden">
+                <input type="file" id="file-input"
+                    accept=".xlsx, .xls, .csv" class="hidden"
+                    aria-label="Importar planilha de dados"
+                    title="Importar planilha">
             </div>
-        </div>
 
-        <div id="loading-status" class="hidden no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4">
-            <div class="w-full max-w-md rounded-2xl border border-red-200 bg-white/95 shadow-[0_20px_45px_rgba(15,23,42,0.24)] ring-1 ring-red-100">
-                <div class="flex items-center gap-4 px-5 py-5">
-                    <div class="relative flex h-14 w-14 items-center justify-center rounded-full bg-red-100 border border-red-200 shrink-0">
-                        <span class="h-6 w-6 rounded-full border-2 border-red-600 border-t-transparent animate-spin"></span>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <div id="loading-status-title" class="text-base font-black text-slate-900">Carregando informações da planilha</div>
-                        <div id="loading-status-subtitle" class="text-xs text-slate-600 mt-1">Aguarde um momento enquanto os dados são processados...</div>
-                        <div class="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-red-100">
-                            <div class="h-full w-1/2 rounded-full bg-gradient-to-r from-red-500 via-red-600 to-red-700 animate-pulse"></div>
+            <div id="loading-status"
+                class="hidden no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4">
+                <div
+                    class="w-full max-w-md rounded-2xl border border-red-200 bg-white/95 shadow-[0_20px_45px_rgba(15,23,42,0.24)] ring-1 ring-red-100">
+                    <div class="flex items-center gap-4 px-5 py-5">
+                        <div
+                            class="relative flex h-14 w-14 items-center justify-center rounded-full bg-red-100 border border-red-200 shrink-0">
+                            <span
+                                class="h-6 w-6 rounded-full border-2 border-red-600 border-t-transparent animate-spin"></span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div id="loading-status-title"
+                                class="text-base font-black text-slate-900">Carregando
+                                informações da planilha</div>
+                            <div id="loading-status-subtitle"
+                                class="text-xs text-slate-600 mt-1">Aguarde um
+                                momento enquanto os dados são
+                                processados...</div>
+                            <div
+                                class="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-red-100">
+                                <div
+                                    class="h-full w-1/2 rounded-full bg-gradient-to-r from-red-500 via-red-600 to-red-700 animate-pulse"></div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Global Filters Control Panel -->
-        <section id="filter-section" class="bg-gradient-to-br from-red-50 via-white to-red-50 p-5 rounded-2xl border border-red-200 shadow-sm space-y-4 no-print">
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                <div class="flex items-center space-x-2">
-                    <span class="text-red-600 text-base font-bold">&#127899;</span>
-                    <h4 class="font-bold text-slate-900 text-sm sm:text-base">Painel de Filtros Globais Dinâmicos</h4>
-                </div>
-                <div class="flex items-center gap-3">
-                    <span id="active-filters-count" class="text-xs text-slate-500 font-semibold">Sem filtros ativos</span>
-                    <button id="btn-reset-filters" onclick="resetAllFilters()" class="text-xs font-bold text-rose-600 hover:text-rose-800 bg-rose-50 px-2.5 py-1 rounded transition">
-                        Limpar Todos
-                    </button>
                 </div>
             </div>
 
-            <!-- Filter Controls Grid -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                <div>
-                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Município</label>
-                    <select id="filter-municipality" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-2 focus:ring-red-500 focus:outline-none">
-                        <option value="ALL">Todos os Municípios</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Órgão / Secretaria</label>
-                    <select id="filter-organ" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-2 focus:ring-red-500 focus:outline-none">
-                        <option value="ALL">Todos os Órgãos</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Situação / Estágio</label>
-                    <select id="filter-status" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-2 focus:ring-red-500 focus:outline-none">
-                        <option value="ALL">Todas as Situações</option>
-                        <option value="ATENDIDO">Atendido / Concluído</option>
-                        <option value="EM_ABERTO">Em Aberto / Pendente</option>
-                        <option value="EM_ESTUDO">Em Estudo</option>
-                        <option value="CONVENIO">Convênio</option>
-                        <option value="LICITACAO">Licitação</option>
-                        <option value="CANCELADO">Cancelado</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Área Temática</label>
-                    <select id="filter-area" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-2 focus:ring-red-500 focus:outline-none">
-                        <option value="ALL">Todas as Áreas</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Busca Textual</label>
-                    <input type="text" id="filter-search" placeholder="Ex: Escola, Drenagem..." class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-red-500 focus:outline-none">
-                </div>
-            </div>
-
-            <!-- Filter Badges / Active Pills Container -->
-            <div id="active-pills-container" class="flex flex-wrap gap-2 pt-1 empty:hidden">
-                <!-- JS injected active filter pills -->
-            </div>
-        </section>
-
-        <!-- ========================================================================= -->
-        <!-- MODO EXECUTIVO (VIEW CONTAINER 1) -->
-        <!-- ========================================================================= -->
-        <div id="view-executive-mode" class="space-y-8">
-
-            <!-- Executive Insights Summary Narrative Box -->
-            <section class="bg-gradient-to-br from-slate-900 via-red-950 to-slate-900 rounded-2xl p-6 text-white shadow-lg space-y-4 border border-red-900/50">
-                <div class="flex items-center justify-between">
-                    <span class="text-xs font-bold uppercase tracking-widest text-red-200 bg-red-500/10 px-3 py-1 rounded-full border border-red-400/20">
-                        Síntese Executiva Automática de Insights
-                    </span>
-                    <span class="text-xs text-slate-400 font-medium">Baseado estritamente nos dados carregados</span>
-                </div>
-                <div id="executive-insights-list" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs sm:text-sm text-slate-200 leading-relaxed">
-                    <!-- JS Injected Narrative Bullet Points -->
-                </div>
-            </section>
-
-            <!-- Executive Secretariat Summary Matrix -->
-            <section class="bg-gradient-to-br from-red-50 via-white to-red-100 p-5 rounded-2xl border border-red-200 shadow-md space-y-4">
-                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200 pb-3">
-                    <div>
-                        <h3 class="text-lg font-black text-slate-900 flex items-center gap-2">
-                            <span class="text-red-600">&#128200;</span> Visão Setorial por Secretaria
-                        </h3>
-                        <p class="text-xs text-slate-600">Comparativo executivo por órgão, incluindo volume, atendimento e pendências.</p>
-                    </div>
-                    <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                        <span class="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Legenda</span>
-                    </div>
-                </div>
-
-                <div class="overflow-x-auto">
-                    <table id="secretariat-matrix" class="w-full border border-slate-300 text-[11px] text-slate-800 shadow-sm rounded-xl overflow-hidden">
-                        <thead>
-                            <tr>
-                                <th class="border border-slate-300 bg-gradient-to-r from-red-900 via-red-800 to-red-700 px-2 py-2 text-left font-black uppercase tracking-wide text-white">Total</th>
-                                <th id="secretariat-header-0" class="border border-slate-300 bg-red-100 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
-                                <th id="secretariat-header-1" class="border border-slate-300 bg-red-50 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
-                                <th id="secretariat-header-2" class="border border-slate-300 bg-red-50 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
-                                <th id="secretariat-header-3" class="border border-slate-300 bg-red-100 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
-                                <th id="secretariat-header-4" class="border border-slate-300 bg-amber-50 px-2 py-2 text-center font-black uppercase text-amber-900">-</th>
-                                <th id="secretariat-header-5" class="border border-slate-300 bg-amber-100 px-2 py-2 text-center font-black uppercase text-amber-900">-</th>
-                            </tr>
-                        </thead>
-                        <tbody id="secretariat-matrix-body">
-                            <!-- Injected by JS -->
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- Executive KPI Cards Grid -->
-            <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <!-- Card 1: Volume de Pleitos -->
-                <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
-                    <div class="flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
-                        <span>Total de Pleitos</span>
-                        <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded">Geral</span>
-                    </div>
-                    <div class="mt-3 flex items-baseline justify-between">
-                        <span id="kpi-exec-total" class="text-3xl font-extrabold text-slate-900">0</span>
-                        <span id="kpi-exec-muni-count" class="text-xs text-slate-500">0 municípios</span>
-                    </div>
-                    <p class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Cadastrados no recorte atual</p>
-                </div>
-
-                <!-- Card 2: Taxa de Atendimento -->
-                <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
-                    <div class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-emerald-600">
-                        <span>Taxa de Atendimento</span>
-                        <span id="kpi-exec-rate-badge" class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">0.0%</span>
-                    </div>
-                    <div class="mt-3 flex items-baseline justify-between">
-                        <span id="kpi-exec-attended-count" class="text-3xl font-extrabold text-emerald-600">0</span>
-                        <span class="text-xs text-emerald-700 font-medium">Atendidos / Concluídos</span>
-                    </div>
-                    <div class="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden">
-                        <div id="kpi-exec-rate-bar" class="bg-emerald-500 h-2 rounded-full" style="width: 0%;"></div>
-                    </div>
-                </div>
-
-                <!-- Card 3: Investimento Total Atendido -->
-                <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
-                    <div class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-red-600">
-                        <span>Investimento Atendido</span>
-                        <span class="bg-red-50 text-red-700 px-2 py-0.5 rounded">Executado</span>
-                    </div>
-                    <div class="mt-3">
-                        <span id="kpi-exec-val-attended" class="text-2xl sm:text-3xl font-extrabold text-red-800">R$ 0,00</span>
-                    </div>
-                    <p id="kpi-exec-ticket-avg" class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Ticket Médio: R$ 0,00</p>
-                </div>
-
-                <!-- Card 4: Passivo Financeiro em Aberto -->
-                <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
-                    <div class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-amber-600">
-                        <span>Passivo em Aberto</span>
-                        <span id="kpi-exec-open-count" class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded">0 Pleitos</span>
-                    </div>
-                    <div class="mt-3">
-                        <span id="kpi-exec-val-open" class="text-2xl sm:text-3xl font-extrabold text-amber-600">R$ 0,00</span>
-                    </div>
-                    <p class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Demandas pendentes ou em estudo</p>
-                </div>
-            </section>
-
-            <!-- Executive Charts Grid -->
-            <section class="grid grid-cols-1 gap-6">
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <div class="flex items-center justify-between mb-1">
-                            <h4 class="font-bold text-slate-900 text-sm">Volume por Órgão / Secretaria</h4>
-                            <span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">Distribuição Setorial</span>
+            <!-- Global Filters Control Panel -->
+            <section id="filter-section"
+                class="bg-gradient-to-br from-red-50 via-white to-red-50 p-5 rounded-2xl border border-red-200 shadow-sm no-print space-y-4">
+                <!-- Header Row -->
+                <div
+                    class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-red-100 pb-4">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <span
+                            class="w-8 h-8 rounded-lg bg-red-600/10 text-red-600 flex items-center justify-center text-sm font-bold shrink-0">&#127899;</span>
+                        <div class="min-w-0">
+                            <h4
+                                class="font-bold text-slate-900 text-sm sm:text-base leading-tight">Painel
+                                de Filtros Globais Dinâmicos</h4>
+                            <p
+                                class="text-[11px] text-slate-500 truncate">Refine
+                                os dados exibidos em todos os relatórios e
+                                gráficos</p>
                         </div>
-                        <p class="text-xs text-slate-500 mb-3">Participação financeira das secretarias e órgãos no território.</p>
                     </div>
-                    <div class="chart-container">
-                        <canvas id="chartExecOrgan"></canvas>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Concentration & Pareto Analysis Section -->
-            <section class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-                <div>
-                    <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
-                        <span>&#128201;</span> Análise de Concentração de Recurso (Pareto)
-                    </h3>
-                    <p class="text-xs text-slate-500">Mapeamento do grau de centralização financeira nos principais municípios e órgãos estaduais.</p>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- Top 5 Municipalities Share -->
-                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                        <div class="flex items-center justify-between text-xs font-bold text-slate-800">
-                            <span>Concentração nos Top 5 Municípios</span>
-                            <span id="pareto-top5-pct" class="text-red-700 font-extrabold text-sm">0%</span>
-                        </div>
-                        <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-                            <div id="pareto-top5-bar" class="bg-red-600 h-3 rounded-full" style="width: 0%;"></div>
-                        </div>
-                        <p id="pareto-top5-desc" class="text-xs text-slate-600">Calculando participação dos 5 maiores municípios...</p>
-                    </div>
-
-                    <!-- Top 3 Organs Share -->
-                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                        <div class="flex items-center justify-between text-xs font-bold text-slate-800">
-                            <span>Concentração nos Top 3 Órgãos</span>
-                            <span id="pareto-top3-organ-pct" class="text-emerald-700 font-extrabold text-sm">0%</span>
-                        </div>
-                        <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-                            <div id="pareto-top3-organ-bar" class="bg-emerald-600 h-3 rounded-full" style="width: 0%;"></div>
-                        </div>
-                        <p id="pareto-top3-organ-desc" class="text-xs text-slate-600">Calculando participação dos 3 maiores órgãos...</p>
-                    </div>
-                </div>
-            </section>
-
-            <!-- General Executive Table -->
-            <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div>
-                        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-                            <span>&#128196;</span> Tabela Geral do Relatório Executivo
-                        </h3>
-                        <p class="text-xs text-slate-500">Detalhamento completo dos registros do recorte atual.</p>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <span id="general-table-count-label" class="text-[11px] font-bold uppercase tracking-wider text-slate-500">0 registros no recorte atual</span>
-                        <button id="toggle-general-table" onclick="toggleGeneralExecutiveTable()" class="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold px-3 py-1.5 rounded-lg text-xs transition">
-                            Ocultar tabela geral
-                        </button>
-                    </div>
-                </div>
-                <div id="general-table-container" class="overflow-x-auto">
-                    <table class="w-full text-left text-xs text-slate-700">
-                        <thead class="bg-gradient-to-r from-red-900 via-red-800 to-red-700 text-white font-semibold">
-                            <tr>
-                                <th class="p-3">Pos.</th>
-                                <th class="p-3">Município</th>
-                                <th class="p-3">Órgão</th>
-                                <th class="p-3">Área</th>
-                                <th class="p-3">Descrição do Objeto</th>
-                                <th class="p-3 text-right">Valor (R$)</th>
-                                <th class="p-3 text-center">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="general-report-table-body" class="divide-y divide-slate-100">
-                            <!-- Injected by JS -->
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-        </div>
-
-        <!-- ========================================================================= -->
-        <!-- MODO ANALISTA (VIEW CONTAINER 2) -->
-        <!-- ========================================================================= -->
-        <div id="view-analyst-mode" class="hidden space-y-8">
-
-            <!-- Data Quality Audit & Rules Dashboard -->
-            <section class="bg-gradient-to-br from-red-50 via-white to-slate-50 p-6 rounded-2xl border border-red-100 shadow-sm space-y-6">
-                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-red-100 pb-4">
-                    <div>
-                        <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
-                            <span>&#128269;</span> Auditoria de Qualidade dos Dados (Data Audit)
-                        </h3>
-                        <p class="text-xs text-slate-500">Métricas de integridade, preenchimento de colunas e consistência da base de dados.</p>
-                    </div>
-                    <div class="flex items-center space-x-2">
-                        <button onclick="document.getElementById('file-input').click()" class="bg-red-50 text-red-700 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 transition">
-                            Re-mapear Colunas
+                    <div class="flex items-center gap-2.5 shrink-0">
+                        <span id="active-filters-count"
+                            class="text-xs text-slate-500 font-semibold bg-white/70 border border-slate-200 rounded-full px-3 py-1.5 whitespace-nowrap">Sem
+                            filtros ativos</span>
+                        <button id="btn-reset-filters"
+                            onclick="resetAllFilters()"
+                            class="text-xs font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                            Limpar Todos
                         </button>
                     </div>
                 </div>
 
-                <!-- Field Completeness Grid -->
-                <div id="field-quality-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                    <!-- Injected by JS -->
-                </div>
-            </section>
-
-            <!-- Potential Duplicates Detector Module -->
-            <section class="bg-gradient-to-br from-white via-red-50 to-white p-6 rounded-2xl border border-red-100 shadow-sm space-y-4">
-                <div class="flex items-center justify-between border-b border-red-100 pb-3">
-                    <div>
-                        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-                            <span>&#128108;</span> Módulo de Detecção de Possíveis Duplicidades
-                        </h3>
-                        <p class="text-xs text-slate-500">Mapeamento de registros com alta similaridade textual no mesmo município e órgão.</p>
-                    </div>
-                    <span id="duplicates-count-badge" class="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-full">0 Duplicidades</span>
-                </div>
-
-                <div id="duplicates-container" class="space-y-3 max-h-80 overflow-y-auto custom-scrollbar">
-                    <!-- Injected by JS -->
-                </div>
-            </section>
-
-            <!-- Full Analytical Raw & Normalized Data Table -->
-            <section class="bg-gradient-to-br from-white via-red-50 to-slate-50 rounded-2xl border border-red-100 shadow-sm overflow-hidden space-y-4">
-                <div class="p-5 border-b border-red-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-                            <span>&#128195;</span> Tabela Completa de Dados (Brutos vs Tratados)
-                        </h3>
-                        <p class="text-xs text-slate-500">Clique em qualquer registro para abrir a auditoria detalhada dos dados originais vs tratados.</p>
-                    </div>
-
-                    <!-- Table Controls & Pagination -->
-                    <div class="flex items-center space-x-3 text-xs">
-                        <label class="text-slate-500 font-semibold">Exibir:</label>
-                        <select id="table-page-size" onchange="changePageSize(this.value)" class="bg-slate-50 border border-slate-300 rounded p-1">
-                            <option value="10">10 por pág</option>
-                            <option value="25" selected>25 por pág</option>
-                            <option value="50">50 por pág</option>
-                            <option value="100">100 por pág</option>
+                <!-- Filter Controls Grid -->
+                <div
+                    class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+                    <div class="filter-field">
+                        <label for="filter-municipality"
+                            class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Município</label>
+                        <select id="filter-municipality"
+                            class="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2.5 font-medium focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none transition">
+                            <option value="ALL">Todos os Municípios</option>
                         </select>
-                        <div class="flex items-center space-x-1">
-                            <button onclick="changePage(-1)" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded font-bold">&lt;</button>
-                            <span id="table-page-indicator" class="font-bold text-slate-700">Pág 1</span>
-                            <button onclick="changePage(1)" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded font-bold">&gt;</button>
-                        </div>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-organ"
+                            class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Órgão
+                            / Secretaria</label>
+                        <select id="filter-organ"
+                            class="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2.5 font-medium focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none transition">
+                            <option value="ALL">Todos os Órgãos</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-status"
+                            class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Situação
+                            / Estágio</label>
+                        <select id="filter-status"
+                            class="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2.5 font-medium focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none transition">
+                            <option value="ALL">Todas as Situações</option>
+                            <option value="ATENDIDO">Atendido /
+                                Concluído</option>
+                            <option value="EM_ABERTO">Em Aberto /
+                                Pendente</option>
+                            <option value="EM_ESTUDO">Em Estudo</option>
+                            <option value="CONVENIO">Convênio</option>
+                            <option value="LICITACAO">Licitação</option>
+                            <option value="CANCELADO">Cancelado</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-area"
+                            class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Área
+                            Temática</label>
+                        <select id="filter-area"
+                            class="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2.5 font-medium focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none transition">
+                            <option value="ALL">Todas as Áreas</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-search"
+                            class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Busca
+                            Textual</label>
+                        <input type="text" id="filter-search"
+                            placeholder="Ex: Escola, Drenagem..."
+                            class="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none transition">
                     </div>
                 </div>
 
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs text-slate-700">
-                        <thead class="bg-gradient-to-r from-red-900 via-red-800 to-red-700 text-white font-semibold">
-                            <tr>
-                                <th class="p-3">ID</th>
-                                <th class="p-3">Município (Tratado)</th>
-                                <th class="p-3">Órgão</th>
-                                <th class="p-3">Descrição / Pleito</th>
-                                <th class="p-3 text-right">Valor Tratado (R$)</th>
-                                <th class="p-3 text-center">Situação Padronizada</th>
-                                <th class="p-3 text-center">Prioridade Analítica</th>
-                                <th class="p-3 text-center">Ação</th>
-                            </tr>
-                        </thead>
-                        <tbody id="table-full-analytics-body" class="divide-y divide-slate-100">
-                            <!-- Injected by JS -->
-                        </tbody>
-                    </table>
+                <!-- Filter Badges / Active Pills Container -->
+                <div id="active-pills-container"
+                    class="flex flex-wrap gap-2 pt-3 empty:hidden border-t border-red-100">
+                    <!-- JS injected active filter pills -->
                 </div>
             </section>
 
+            <!-- ========================================================================= -->
+            <!-- MODO EXECUTIVO (VIEW CONTAINER 1) -->
+            <!-- ========================================================================= -->
+            <div id="view-executive-mode" class="space-y-8">
+
+                <!-- Executive Insights Summary Narrative Box -->
+                <section
+                    class="bg-gradient-to-br from-slate-900 via-red-950 to-slate-900 rounded-2xl p-6 text-white shadow-lg space-y-4 border border-red-900/50">
+                    <div class="flex items-center justify-between">
+                        <span
+                            class="text-xs font-bold uppercase tracking-widest text-red-200 bg-red-500/10 px-3 py-1 rounded-full border border-red-400/20">
+                            Síntese Executiva Automática de Insights
+                        </span>
+                        <span class="text-xs text-slate-400 font-medium">Baseado
+                            estritamente nos dados carregados</span>
+                    </div>
+                    <div id="executive-insights-list"
+                        class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs sm:text-sm text-slate-200 leading-relaxed">
+                        <!-- JS Injected Narrative Bullet Points -->
+                    </div>
+                </section>
+
+                <!-- Executive Secretariat Summary Matrix -->
+                <section
+                    class="bg-gradient-to-br from-red-50 via-white to-red-100 p-5 rounded-2xl border border-red-200 shadow-md space-y-4">
+                    <div
+                        class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                        <div>
+                            <h3
+                                class="text-lg font-black text-slate-900 flex items-center gap-2">
+                                <span class="text-red-600">&#128200;</span>
+                                Visão Setorial por Secretaria
+                            </h3>
+                            <p class="text-xs text-slate-600">Comparativo
+                                executivo por órgão, incluindo volume,
+                                atendimento e pendências.</p>
+                        </div>
+                        <div
+                            class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                            <span
+                                class="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Legenda</span>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table id="secretariat-matrix"
+                            class="w-full border border-slate-300 text-[11px] text-slate-800 shadow-sm rounded-xl overflow-hidden">
+                            <thead>
+                                <tr>
+                                    <th
+                                        class="border border-slate-300 bg-gradient-to-r from-red-900 via-red-800 to-red-700 px-2 py-2 text-left font-black uppercase tracking-wide text-white">Total</th>
+                                    <th id="secretariat-header-0"
+                                        class="border border-slate-300 bg-red-100 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
+                                    <th id="secretariat-header-1"
+                                        class="border border-slate-300 bg-red-50 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
+                                    <th id="secretariat-header-2"
+                                        class="border border-slate-300 bg-red-50 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
+                                    <th id="secretariat-header-3"
+                                        class="border border-slate-300 bg-red-100 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
+                                    <th id="secretariat-header-4"
+                                        class="border border-slate-300 bg-amber-50 px-2 py-2 text-center font-black uppercase text-amber-900">-</th>
+                                    <th id="secretariat-header-5"
+                                        class="border border-slate-300 bg-amber-100 px-2 py-2 text-center font-black uppercase text-amber-900">-</th>
+                                </tr>
+                            </thead>
+                            <tbody id="secretariat-matrix-body">
+                                <!-- Injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Executive KPI Cards Grid -->
+                <section
+                    class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <!-- Card 1: Volume de Pleitos -->
+                    <div
+                        class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                        <div
+                            class="flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
+                            <span>Total de Pleitos</span>
+                            <span
+                                class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded">Geral</span>
+                        </div>
+                        <div class="mt-3 flex items-baseline justify-between">
+                            <span id="kpi-exec-total"
+                                class="text-3xl font-extrabold text-slate-900">0</span>
+                            <span id="kpi-exec-muni-count"
+                                class="text-xs text-slate-500">0
+                                municípios</span>
+                        </div>
+                        <p
+                            class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Cadastrados
+                            no recorte atual</p>
+                    </div>
+
+                    <!-- Card 2: Taxa de Atendimento -->
+                    <div
+                        class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                        <div
+                            class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-emerald-600">
+                            <span>Taxa de Atendimento</span>
+                            <span id="kpi-exec-rate-badge"
+                                class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">0.0%</span>
+                        </div>
+                        <div class="mt-3 flex items-baseline justify-between">
+                            <span id="kpi-exec-attended-count"
+                                class="text-3xl font-extrabold text-emerald-600">0</span>
+                            <span
+                                class="text-xs text-emerald-700 font-medium">Atendidos
+                                / Concluídos</span>
+                        </div>
+                        <div
+                            class="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden">
+                            <div id="kpi-exec-rate-bar"
+                                class="bg-emerald-500 h-2 rounded-full"
+                                style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Card 3: Investimento Total Atendido -->
+                    <div
+                        class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                        <div
+                            class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-red-600">
+                            <span>Investimento Atendido</span>
+                            <span
+                                class="bg-red-50 text-red-700 px-2 py-0.5 rounded">Executado</span>
+                        </div>
+                        <div class="mt-3">
+                            <span id="kpi-exec-val-attended"
+                                class="text-2xl sm:text-3xl font-extrabold text-red-800">R$
+                                0,00</span>
+                        </div>
+                        <p id="kpi-exec-ticket-avg"
+                            class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Ticket
+                            Médio: R$ 0,00</p>
+                    </div>
+
+                    <!-- Card 4: Passivo Financeiro em Aberto -->
+                    <div
+                        class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                        <div
+                            class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-amber-600">
+                            <span>Passivo em Aberto</span>
+                            <span id="kpi-exec-open-count"
+                                class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded">0
+                                Pleitos</span>
+                        </div>
+                        <div class="mt-3">
+                            <span id="kpi-exec-val-open"
+                                class="text-2xl sm:text-3xl font-extrabold text-amber-600">R$
+                                0,00</span>
+                        </div>
+                        <p
+                            class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Demandas
+                            pendentes ou em estudo</p>
+                    </div>
+                </section>
+
+                <!-- Concentration & Pareto Analysis Section -->
+                <section
+                    class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                    <div>
+                        <h3
+                            class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span>&#128201;</span> Análise de Concentração de
+                            Recurso (Pareto)
+                        </h3>
+                        <p class="text-xs text-slate-500">Mapeamento do grau de
+                            centralização financeira nos principais municípios e
+                            órgãos estaduais.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Top 5 Municipalities Share -->
+                        <div
+                            class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                            <div
+                                class="flex items-center justify-between text-xs font-bold text-slate-800">
+                                <span>Concentração nos Top 5 Municípios</span>
+                                <span id="pareto-top5-pct"
+                                    class="text-red-700 font-extrabold text-sm">0%</span>
+                            </div>
+                            <div
+                                class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                                <div id="pareto-top5-bar"
+                                    class="bg-red-600 h-3 rounded-full"
+                                    style="width: 0%;"></div>
+                            </div>
+                            <p id="pareto-top5-desc"
+                                class="text-xs text-slate-600">Calculando
+                                participação dos 5 maiores municípios...</p>
+                        </div>
+
+                        <!-- Top 3 Organs Share -->
+                        <div
+                            class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                            <div
+                                class="flex items-center justify-between text-xs font-bold text-slate-800">
+                                <span>Concentração nos Top 3 Órgãos</span>
+                                <span id="pareto-top3-organ-pct"
+                                    class="text-emerald-700 font-extrabold text-sm">0%</span>
+                            </div>
+                            <div
+                                class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                                <div id="pareto-top3-organ-bar"
+                                    class="bg-emerald-600 h-3 rounded-full"
+                                    style="width: 0%;"></div>
+                            </div>
+                            <p id="pareto-top3-organ-desc"
+                                class="text-xs text-slate-600">Calculando
+                                participação dos 3 maiores órgãos...</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- General Executive Table -->
+                <section
+                    class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div
+                        class="p-5 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div>
+                            <h3
+                                class="text-base font-bold text-slate-900 flex items-center gap-2">
+                                <span>&#128196;</span> Tabela Geral do Relatório
+                                Executivo
+                            </h3>
+                            <p class="text-xs text-slate-500">Detalhamento
+                                completo dos registros do recorte atual.</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span id="general-table-count-label"
+                                class="text-[11px] font-bold uppercase tracking-wider text-slate-500">0
+                                registros no recorte atual</span>
+                            <button id="toggle-general-table"
+                                onclick="toggleGeneralExecutiveTable()"
+                                class="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold px-3 py-1.5 rounded-lg text-xs transition">
+                                Ocultar tabela geral
+                            </button>
+                        </div>
+                    </div>
+                    <div id="general-table-container" class="overflow-x-auto">
+                        <table class="w-full text-left text-xs text-slate-700">
+                            <thead
+                                class="bg-gradient-to-r from-red-900 via-red-800 to-red-700 text-white font-semibold">
+                                <tr>
+                                    <th class="p-3">Pos.</th>
+                                    <th class="p-3">Município</th>
+                                    <th class="p-3">Órgão</th>
+                                    <th class="p-3">Área</th>
+                                    <th class="p-3">Descrição do Objeto</th>
+                                    <th class="p-3 text-right">Valor (R$)</th>
+                                    <th class="p-3 text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="general-report-table-body"
+                                class="divide-y divide-slate-100">
+                                <!-- Injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+            </div>
+
+            <!-- ========================================================================= -->
+            <!-- MODO ANALISTA (VIEW CONTAINER 2) -->
+            <!-- ========================================================================= -->
+            <div id="view-analyst-mode" class="hidden space-y-8">
+
+                <!-- Data Quality Audit & Rules Dashboard -->
+                <section
+                    class="bg-gradient-to-br from-red-50 via-white to-slate-50 p-6 rounded-2xl border border-red-100 shadow-sm space-y-6">
+                    <div
+                        class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-red-100 pb-4">
+                        <div>
+                            <h3
+                                class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                <span>&#128269;</span> Auditoria de Qualidade
+                                dos Dados (Data Audit)
+                            </h3>
+                            <p class="text-xs text-slate-500">Métricas de
+                                integridade, preenchimento de colunas e
+                                consistência da base de dados.</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button
+                                onclick="document.getElementById('file-input').click()"
+                                class="bg-red-50 text-red-700 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 transition">
+                                Re-mapear Colunas
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Field Completeness Grid -->
+                    <div id="field-quality-grid"
+                        class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                        <!-- Injected by JS -->
+                    </div>
+                </section>
+
+                <!-- Potential Duplicates Detector Module -->
+                <section
+                    class="bg-gradient-to-br from-white via-red-50 to-white p-6 rounded-2xl border border-red-100 shadow-sm space-y-4">
+                    <div
+                        class="flex items-center justify-between border-b border-red-100 pb-3">
+                        <div>
+                            <h3
+                                class="text-base font-bold text-slate-900 flex items-center gap-2">
+                                <span>&#128108;</span> Módulo de Detecção de
+                                Possíveis Duplicidades
+                            </h3>
+                            <p class="text-xs text-slate-500">Mapeamento de
+                                registros com alta similaridade textual no mesmo
+                                município e órgão.</p>
+                        </div>
+                        <span id="duplicates-count-badge"
+                            class="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-full">0
+                            Duplicidades</span>
+                    </div>
+
+                    <div id="duplicates-container"
+                        class="space-y-3 max-h-80 overflow-y-auto custom-scrollbar">
+                        <!-- Injected by JS -->
+                    </div>
+                </section>
+
+                <!-- Full Analytical Raw & Normalized Data Table -->
+                <section
+                    class="bg-gradient-to-br from-white via-red-50 to-slate-50 rounded-2xl border border-red-100 shadow-sm overflow-hidden space-y-4">
+                    <div
+                        class="p-5 border-b border-red-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h3
+                                class="text-base font-bold text-slate-900 flex items-center gap-2">
+                                <span>&#128195;</span> Tabela Completa de Dados
+                                (Brutos vs Tratados)
+                            </h3>
+                            <p class="text-xs text-slate-500">Clique em qualquer
+                                registro para abrir a auditoria detalhada dos
+                                dados originais vs tratados.</p>
+                        </div>
+
+                        <!-- Table Controls & Pagination -->
+                        <div class="flex items-center space-x-3 text-xs">
+                            <label for="table-page-size"
+                                class="text-slate-500 font-semibold">Exibir:</label>
+                            <select id="table-page-size"
+                                title="Quantidade de registros por página"
+                                onchange="changePageSize(this.value)"
+                                class="bg-slate-50 border border-slate-300 rounded p-1">
+                                <option value="10">10 por pág</option>
+                                <option value="25" selected>25 por pág</option>
+                                <option value="50">50 por pág</option>
+                                <option value="100">100 por pág</option>
+                            </select>
+                            <div class="flex items-center space-x-1">
+                                <button onclick="changePage(-1)"
+                                    class="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded font-bold">&lt;</button>
+                                <span id="table-page-indicator"
+                                    class="font-bold text-slate-700">Pág
+                                    1</span>
+                                <button onclick="changePage(1)"
+                                    class="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded font-bold">&gt;</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs text-slate-700">
+                            <thead
+                                class="bg-gradient-to-r from-red-900 via-red-800 to-red-700 text-white font-semibold">
+                                <tr>
+                                    <th class="p-3">ID</th>
+                                    <th class="p-3">Município (Tratado)</th>
+                                    <th class="p-3">Órgão</th>
+                                    <th class="p-3">Descrição / Pleito</th>
+                                    <th class="p-3 text-right">Valor Tratado
+                                        (R$)</th>
+                                    <th class="p-3 text-center">Situação
+                                        Padronizada</th>
+                                    <th class="p-3 text-center">Prioridade
+                                        Analítica</th>
+                                    <th class="p-3 text-center">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-full-analytics-body"
+                                class="divide-y divide-slate-100">
+                                <!-- Injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+            </div>
+
+        </main>
+
+        <!-- Column Mapper Confirmation Modal -->
+        <div id="column-mapper-modal"
+            class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+            <div
+                class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-5 border border-slate-200 max-h-[90vh] overflow-y-auto">
+                <div
+                    class="border-b border-slate-100 pb-3 flex items-center justify-between">
+                    <div>
+                        <h3
+                            class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span>&#128477;</span> Confirmação de Mapeamento de
+                            Colunas
+                        </h3>
+                        <p class="text-xs text-slate-500">Valide ou corrija o
+                            mapeamento automático das colunas da sua
+                            planilha.</p>
+                    </div>
+                    <button onclick="closeMapperModal()"
+                        class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+                </div>
+
+                <div id="mapper-fields-list" class="space-y-3 text-xs">
+                    <!-- JS injected mappings -->
+                </div>
+
+                <div
+                    class="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+                    <span id="mapper-warning-msg"
+                        class="text-xs text-amber-600 font-semibold"></span>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="closeMapperModal()"
+                            class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">Cancelar</button>
+                        <button id="process-planilha-button"
+                            onclick="confirmColumnMapping()"
+                            class="px-5 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg shadow transition">Processar
+                            Planilha</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
-    </main>
-
-    <!-- Column Mapper Confirmation Modal -->
-    <div id="column-mapper-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-5 border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div class="border-b border-slate-100 pb-3 flex items-center justify-between">
-                <div>
-                    <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
-                        <span>&#128477;</span> Confirmação de Mapeamento de Colunas
+        <!-- Record Detail & Data Audit Modal -->
+        <div id="detail-modal"
+            class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+            <div
+                class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+                <div
+                    class="border-b border-slate-100 pb-3 flex items-center justify-between">
+                    <h3
+                        class="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span>&#128195;</span> Detalhamento e Auditoria do
+                        Registro
                     </h3>
-                    <p class="text-xs text-slate-500">Valide ou corrija o mapeamento automático das colunas da sua planilha.</p>
+                    <button onclick="closeDetailModal()"
+                        class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
                 </div>
-                <button onclick="closeMapperModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
-            </div>
 
-            <div id="mapper-fields-list" class="space-y-3 text-xs">
-                <!-- JS injected mappings -->
-            </div>
+                <div id="detail-modal-content"
+                    class="space-y-3 text-xs text-slate-700">
+                    <!-- Injected by JS -->
+                </div>
 
-            <div class="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
-                <span id="mapper-warning-msg" class="text-xs text-amber-600 font-semibold"></span>
-                <div class="flex items-center space-x-2">
-                    <button onclick="closeMapperModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">Cancelar</button>
-                    <button id="process-planilha-button" onclick="confirmColumnMapping()" class="px-5 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg shadow transition">Processar Planilha</button>
+                <div class="pt-3 border-t border-slate-100 text-right">
+                    <button onclick="closeDetailModal()"
+                        class="px-4 py-2 bg-slate-800 text-white font-bold rounded-lg text-xs">Fechar
+                        Auditoria</button>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Record Detail & Data Audit Modal -->
-    <div id="detail-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 border border-slate-200">
-            <div class="border-b border-slate-100 pb-3 flex items-center justify-between">
-                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <span>&#128195;</span> Detalhamento e Auditoria do Registro
-                </h3>
-                <button onclick="closeDetailModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
-            </div>
+        <!-- Summary Copy Modal -->
+        <div id="summary-modal"
+            class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+            <div
+                class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div
+                    class="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h3
+                        class="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span>&#128241;</span> Resumo para cópia
+                    </h3>
+                    <button onclick="closeSummaryModal()"
+                        class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+                </div>
 
-            <div id="detail-modal-content" class="space-y-3 text-xs text-slate-700">
-                <!-- Injected by JS -->
-            </div>
+                <p class="text-xs text-slate-500">Copie o texto abaixo e envie
+                    diretamente no WhatsApp. O relatório organiza os maiores
+                    investimentos, licitações e pleitos em aberto
+                    automaticamente.</p>
 
-            <div class="pt-3 border-t border-slate-100 text-right">
-                <button onclick="closeDetailModal()" class="px-4 py-2 bg-slate-800 text-white font-bold rounded-lg text-xs">Fechar Auditoria</button>
-            </div>
-        </div>
-    </div>
+                <div class="flex items-center justify-between gap-3 pb-2">
+                    <label for="summary-mode-select"
+                        class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Formato</label>
+                    <select id="summary-mode-select"
+                        class="text-xs border border-slate-200 rounded-lg bg-slate-50 px-2 py-1.5 text-slate-800 focus:ring-2 focus:ring-red-500 focus:outline-none">
+                        <option value="executive">Executivo — por área, órgão e
+                            situação</option>
+                    </select>
+                </div>
 
-    <!-- Summary Copy Modal -->
-    <div id="summary-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <span>&#128241;</span> Resumo para cópia
-                </h3>
-                <button onclick="closeSummaryModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
-            </div>
+                <label for="summary-copy-text" class="sr-only">Texto do resumo
+                    para cópia</label>
+                <textarea id="summary-copy-text"
+                    title="Texto do resumo para cópia" rows="18"
+                    class="w-full border border-slate-200 rounded-xl bg-slate-50 text-slate-800 p-3 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-red-500"></textarea>
 
-            <p class="text-xs text-slate-500">Copie o texto abaixo e envie diretamente no WhatsApp. O relatório organiza os maiores investimentos, licitações e pleitos em aberto automaticamente.</p>
-
-            <div class="flex items-center justify-between gap-3 pb-2">
-                <label for="summary-mode-select" class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Formato</label>
-                <select id="summary-mode-select" class="text-xs border border-slate-200 rounded-lg bg-slate-50 px-2 py-1.5 text-slate-800 focus:ring-2 focus:ring-red-500 focus:outline-none">
-                    <option value="executive">Executivo — por área, órgão e situação</option>
-                </select>
-            </div>
-
-            <textarea id="summary-copy-text" rows="18" class="w-full border border-slate-200 rounded-xl bg-slate-50 text-slate-800 p-3 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-red-500"></textarea>
-
-            <div class="flex items-center justify-between gap-3 pt-2 border-t border-slate-100">
-                <button onclick="closeSummaryModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">Fechar</button>
-                <button id="summary-copy-button" onclick="copySummaryText()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow transition">Copiar resumo</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Footer -->
-    <footer class="bg-gradient-to-r from-red-950 via-red-900 to-red-800 text-red-100 text-xs py-8 border-t border-red-700 mt-12">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <div>
-                <p class="font-bold text-red-50">Plataforma de Inteligência Territorial & Tratamento de Dados</p>
-                <p class="text-red-100/80">Desenvolvido para tomada de decisão, transparência e controle gerencial de investimentos.</p>
-            </div>
-            <div class="text-right text-red-100/80 flex items-center gap-4">
-                <button onclick="window.print()" class="bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded text-xs font-semibold no-print">
-                    Gerar PDF Executivo
-                </button>
-                <p>Preserva dados originais • Classificação baseada em regras</p>
+                <div
+                    class="flex items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                    <button onclick="closeSummaryModal()"
+                        class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">Fechar</button>
+                    <button id="summary-copy-button" onclick="copySummaryText()"
+                        class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow transition">Copiar
+                        resumo</button>
+                </div>
             </div>
         </div>
-    </footer>
 
-    <script src="app.js"></script>
-</body>
+        <!-- Footer -->
+        <footer
+            class="bg-gradient-to-r from-red-950 via-red-900 to-red-800 text-red-100 text-xs py-8 border-t border-red-700 mt-12">
+            <div
+                class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div>
+                    <p class="font-bold text-red-50">Plataforma de Inteligência
+                        Territorial & Tratamento de Dados</p>
+                    <p class="text-red-100/80">Desenvolvido para tomada de
+                        decisão, transparência e controle gerencial de
+                        investimentos.</p>
+                </div>
+                <div class="text-right text-red-100/80 flex items-center gap-4">
+                    <button onclick="window.print()"
+                        class="bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded text-xs font-semibold no-print">
+                        Gerar PDF Executivo
+                    </button>
+                    <p>Preserva dados originais • Classificação baseada em
+                        regras</p>
+                </div>
+            </div>
+        </footer>
+
+        <script src="app.js"></script>
+    </body>
 </html>

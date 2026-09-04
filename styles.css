@@ -43,8 +43,25 @@
         }
 
         #global-quality-alert {
-            border-color: rgba(148, 163, 184, 0.35);
-            box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        #global-quality-alert::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            pointer-events: none;
+        }
+
+        #global-quality-alert select option {
+            background-color: #0f172a;
+            color: #f8fafc;
         }
 
         #filter-section {
@@ -52,26 +69,89 @@
             border-color: rgba(254, 202, 202, 0.95);
         }
 
-        .chart-container {
-            position: relative;
+        /* ===== Global Filters Panel - Uniform Field Alignment ===== */
+        .filter-field {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .filter-field label {
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .filter-field select,
+        .filter-field input {
             width: 100%;
-            max-width: 650px;
-            margin-left: auto;
-            margin-right: auto;
-            height: 320px;
-            max-height: 380px;
-            padding: 0.25rem;
+            height: 38px;
+            line-height: 1.2;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 30px;
+            cursor: pointer;
         }
 
-        .chart-container canvas {
-            border-radius: 18px;
-            box-shadow: 0 12px 26px rgba(127, 29, 29, 0.07);
-            background: rgba(255, 255, 255, 0.45);
+        .filter-field input {
+            background-image: none;
+            padding-right: 12px;
+            cursor: text;
         }
 
-        @media (min-width: 768px) {
-            .chart-container {
-                height: 350px;
+        .filter-field select:hover,
+        .filter-field input:hover {
+            border-color: #cbd5e1;
+        }
+
+        .filter-field select:focus,
+        .filter-field input:focus {
+            border-color: #dc2626;
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+        }
+
+        /* Active pills styling */
+        #active-pills-container .filter-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #b91c1c;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            white-space: nowrap;
+        }
+
+        #active-pills-container .filter-pill button {
+            background: none;
+            border: none;
+            color: #b91c1c;
+            font-size: 13px;
+            line-height: 1;
+            padding: 0;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.15s ease;
+        }
+
+        #active-pills-container .filter-pill button:hover {
+            opacity: 1;
+            transform: none;
+            box-shadow: none;
+            filter: none;
+        }
+
+        @media (max-width: 640px) {
+            .filter-field select,
+            .filter-field input {
+                height: 40px;
             }
         }
 
@@ -169,11 +249,6 @@
                 box-shadow: none !important;
                 border: 1px solid #e2e8f0 !important;
             }
-            .chart-container {
-                height: 300px !important;
-                max-height: 320px !important;
-                break-inside: avoid;
-            }
             table {
                 font-size: 10.5px !important;
             }
@@ -186,10 +261,6 @@
         }
 
         @media (max-width: 640px) {
-            .chart-container {
-                height: 240px !important;
-                max-height: 260px !important;
-            }
             table {
                 font-size: 9.5px !important;
             }
