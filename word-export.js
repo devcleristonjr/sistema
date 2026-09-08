@@ -109,6 +109,7 @@
         );
 
         const attendedInvestment = attended.reduce((sum, r) => sum + r.val, 0);
+        const openInvestment = open.reduce((sum, r) => sum + r.val, 0);
 
         // Maiores investimentos: somente os atendidos/publicados.
         const highlights = [...attended]
@@ -121,13 +122,14 @@
                 desc: r.desc
             }));
 
-        // Pleitos em aberto agrupados por órgão.
+        // Pleitos em aberto agrupados por órgão (incluindo o valor individual).
         const groups = new Map();
 
         for (const r of open) {
             if (!groups.has(r.organ)) groups.set(r.organ, []);
             groups.get(r.organ).push({
-                descricao: r.desc
+                descricao: r.desc,
+                valor: brl(r.val)
             });
         }
 
@@ -145,6 +147,7 @@
             emAberto: String(open.length),
             investimentoMi: millions(attendedInvestment),
             investimentoTotal: brl(attendedInvestment),
+            investimentoAberto: brl(openInvestment),
             destaques: highlights,
             abertos
         };
@@ -223,7 +226,6 @@
             console.error("=================================");
             console.error("[WORD] ERRO AO GERAR RELATÓRIO");
 
-            // Novo código para detalhar os erros do template
             if (error.properties && error.properties.errors instanceof Array) {
                 console.error("Encontrados", error.properties.errors.length, "erros no template Word:");
 
@@ -277,7 +279,6 @@
     function boot() {
         injectButton();
 
-        // O app pode montar os botões depois do carregamento inicial.
         setTimeout(injectButton, 500);
         setTimeout(injectButton, 1500);
     }
