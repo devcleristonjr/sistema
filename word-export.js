@@ -209,7 +209,10 @@
 
             doc.render(buildData(records));
 
-            const data = doc.toBlob();
+            const data = doc.getZip().generate({
+                type: "blob",
+                mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            });
             const municipio = buildData(records).municipio;
 
             saveAs(
@@ -219,13 +222,24 @@
         } catch (error) {
             console.error("=================================");
             console.error("[WORD] ERRO AO GERAR RELATÓRIO");
-            console.error(error);
-            console.error("=================================");
 
-            alert(
-                "Erro ao gerar o relatório Word:\n\n" +
-                (error?.message || error)
-            );
+            // Novo código para detalhar os erros do template
+            if (error.properties && error.properties.errors instanceof Array) {
+                console.error("Encontrados", error.properties.errors.length, "erros no template Word:");
+
+                error.properties.errors.forEach(function (err, index) {
+                    console.error(`Erro ${index + 1}:`, err.message);
+                    if (err.properties && err.properties.explanation) {
+                        console.error("  Motivo:", err.properties.explanation);
+                    }
+                });
+
+                alert("O arquivo de template do Word possui erros nas tags (veja o Console F12 para detalhes).");
+            } else {
+                console.error(error);
+                alert("Erro ao gerar o relatório Word:\n\n" + (error?.message || error));
+            }
+            console.error("=================================");
         } finally {
             if (button) {
                 button.disabled = false;
