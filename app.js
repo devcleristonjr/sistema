@@ -16,6 +16,7 @@ const AppState = {
     columnMappings: {},
     filters: {
         municipality: 'ALL',
+        territory: 'ALL',
         organ: 'ALL',
         status: 'ALL',
         area: 'ALL',
@@ -422,7 +423,7 @@ function loadInitialDataset(rawList, label) {
     AppState.datasetLabel = label;
     AppState.rawRecords = rawList;
     AppState.pendingUploadedJson = rawList;
-    AppState.filters = { municipality: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
+    AppState.filters = { municipality: 'ALL', territory: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
     saveDashboardDataset();
 
     // 1. Normalize Records preserving original values
@@ -568,31 +569,38 @@ function bindFilterInputs() {
         applyFilters();
     });
 
+    document.getElementById('filter-territory').addEventListener('change', (e) => { AppState.filters.territory = e.target.value; applyFilters(); });
     document.getElementById('filter-organ').addEventListener('change', (e) => { AppState.filters.organ = e.target.value; applyFilters(); });
     document.getElementById('filter-status').addEventListener('change', (e) => { AppState.filters.status = e.target.value; applyFilters(); });
     document.getElementById('filter-area').addEventListener('change', (e) => { AppState.filters.area = e.target.value; applyFilters(); });
     document.getElementById('filter-search').addEventListener('input', (e) => { AppState.filters.search = e.target.value.toLowerCase().trim(); applyFilters(); });
 }
 
-function syncMunicipalitySelectors() {
-    const filterSelect = document.getElementById('filter-municipality');
-    const selectedValue = AppState.filters.municipality || 'ALL';
+function syncFilterSelectValue(elementId, selectedValue) {
+    const filterSelect = document.getElementById(elementId);
 
     if (filterSelect) {
         const validValue = [...filterSelect.options].some(option => option.value === selectedValue) ? selectedValue : 'ALL';
         filterSelect.value = validValue;
-        AppState.filters.municipality = validValue;
+        return validValue;
     }
+
+    return 'ALL';
 }
 
 function populateFilterOptions() {
     const munis = [...new Set(AppState.normalizedRecords.map(r => r.muni))].sort();
+    const territories = [...new Set(AppState.normalizedRecords.map(r => r.territorio || 'não consta'))].sort();
     const organs = [...new Set(AppState.normalizedRecords.map(r => r.organ))].sort();
     const areas = [...new Set(AppState.normalizedRecords.map(r => r.area))].sort();
 
     const selMuni = document.getElementById('filter-municipality');
     selMuni.innerHTML = '<option value="ALL">Todos os Municípios</option>';
     munis.forEach(m => selMuni.add(new Option(m, m)));
+
+    const selTerritory = document.getElementById('filter-territory');
+    selTerritory.innerHTML = '<option value="ALL">Todos os Territórios</option>';
+    territories.forEach(t => selTerritory.add(new Option(t, t)));
 
     const selOrgan = document.getElementById('filter-organ');
     selOrgan.innerHTML = '<option value="ALL">Todos os Órgãos</option>';
@@ -602,23 +610,26 @@ function populateFilterOptions() {
     selArea.innerHTML = '<option value="ALL">Todas as Áreas</option>';
     areas.forEach(a => selArea.add(new Option(a, a)));
 
-    syncMunicipalitySelectors();
+    AppState.filters.municipality = syncFilterSelectValue('filter-municipality', AppState.filters.municipality || 'ALL');
+    AppState.filters.territory = syncFilterSelectValue('filter-territory', AppState.filters.territory || 'ALL');
 }
 
 function applyFilters() {
     const f = AppState.filters;
     AppState.filteredRecords = AppState.normalizedRecords.filter(r => {
         const matchMuni = f.municipality === 'ALL' || r.muni === f.municipality;
+        const matchTerritory = f.territory === 'ALL' || (r.territorio || 'não consta') === f.territory;
         const matchOrgan = f.organ === 'ALL' || r.organ === f.organ;
         const matchStatus = matchesStatusFilter(r.statusStd, f.status);
         const matchArea = f.area === 'ALL' || r.area === f.area;
         const matchSearch = !f.search ||
             r.muni.toLowerCase().includes(f.search) ||
+            (r.territorio || 'não consta').toLowerCase().includes(f.search) ||
             r.organ.toLowerCase().includes(f.search) ||
             r.desc.toLowerCase().includes(f.search) ||
             r.area.toLowerCase().includes(f.search);
 
-        return matchMuni && matchOrgan && matchStatus && matchArea && matchSearch;
+        return matchMuni && matchTerritory && matchOrgan && matchStatus && matchArea && matchSearch;
     });
 
     const maxPage = Math.max(1, Math.ceil(AppState.filteredRecords.length / AppState.pageSize) || 1);
@@ -647,6 +658,7 @@ function renderActivePills() {
     };
 
     if (f.municipality !== 'ALL') addPill(`Município: ${f.municipality}`, 'municipality');
+    if (f.territory !== 'ALL') addPill(`Território: ${f.territory}`, 'territory');
     if (f.organ !== 'ALL') addPill(`Órgão: ${f.organ}`, 'organ');
     if (f.status !== 'ALL') addPill(`Situação: ${f.status}`, 'status');
     if (f.area !== 'ALL') addPill(`Área: ${f.area}`, 'area');
@@ -662,6 +674,9 @@ function clearSingleFilter(key) {
     } else if (key === 'municipality') {
         AppState.filters.municipality = 'ALL';
         document.getElementById('filter-municipality').value = 'ALL';
+    } else if (key === 'territory') {
+        AppState.filters.territory = 'ALL';
+        document.getElementById('filter-territory').value = 'ALL';
     } else {
         AppState.filters[key] = 'ALL';
         document.getElementById(`filter-${key}`).value = 'ALL';
@@ -670,8 +685,9 @@ function clearSingleFilter(key) {
 }
 
 function resetAllFilters() {
-    AppState.filters = { municipality: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
+    AppState.filters = { municipality: 'ALL', territory: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
     document.getElementById('filter-municipality').value = 'ALL';
+    document.getElementById('filter-territory').value = 'ALL';
     document.getElementById('filter-organ').value = 'ALL';
     document.getElementById('filter-status').value = 'ALL';
     document.getElementById('filter-area').value = 'ALL';
@@ -1591,9 +1607,11 @@ function confirmColumnMapping() {
         area: getVal('area')
     };
 
-    AppState.filters = { municipality: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
+    AppState.filters = { municipality: 'ALL', territory: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
     const filterMunicipio = document.getElementById('filter-municipality');
     if (filterMunicipio) filterMunicipio.value = 'ALL';
+    const filterTerritorio = document.getElementById('filter-territory');
+    if (filterTerritorio) filterTerritorio.value = 'ALL';
 
     if (!mappings.muni || !mappings.desc) {
         document.getElementById('mapper-warning-msg').innerText = "⚠ Selecione colunas válidas para Município e Descrição.";

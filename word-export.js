@@ -83,19 +83,43 @@
             .toLowerCase();
     }
 
-    function getMunicipio(records) {
-        const selected = AppState?.filters?.municipality;
+    function getTerritorio(records) {
+        const selected = AppState?.filters?.territory;
 
         if (selected && selected !== "ALL") {
             return selected;
         }
 
-        const municipalities = [...new Set(records.map(r => r.municipio).filter(Boolean))];
+        const territories = [...new Set(records.map(r => r.territorio).filter(Boolean))];
 
-        if (municipalities.length === 1) return municipalities[0];
+        if (territories.length === 1) return territories[0];
+
+        return "não consta";
+    }
+
+    function getScopeLabel(records) {
+        const selectedMunicipio = AppState?.filters?.municipality;
+        if (selectedMunicipio && selectedMunicipio !== "ALL") {
+            return selectedMunicipio;
+        }
+
+        const selectedTerritorio = AppState?.filters?.territory;
+        if (selectedTerritorio && selectedTerritorio !== "ALL") {
+            return `Território ${selectedTerritorio}`;
+        }
+
+        const municipalities = [...new Set(records.map(r => r.municipio).filter(Boolean))];
+        if (municipalities.length === 1) {
+            return municipalities[0];
+        }
+
+        const territories = [...new Set(records.map(r => r.territorio).filter(Boolean))];
+        if (territories.length === 1) {
+            return `Território ${territories[0]}`;
+        }
 
         throw new Error(
-            "Selecione um município no filtro antes de gerar o relatório Word."
+            "Selecione um município ou território no filtro antes de gerar o relatório Word."
         );
     }
 
@@ -111,10 +135,13 @@
         const attendedInvestment = attended.reduce((sum, r) => sum + r.val, 0);
         const openInvestment = open.reduce((sum, r) => sum + r.val, 0);
 
+        const desiredHighlightCount = Math.max(8, Math.min(15, open.length));
+
         // Maiores investimentos: somente os atendidos/publicados.
+        // Aumentamos o volume para equilibrar melhor com a seção de abertos.
         const highlights = [...attended]
             .sort((a, b) => b.val - a.val)
-            .slice(0, 5)
+            .slice(0, desiredHighlightCount)
             .map(r => ({
                 area: r.area,
                 organ: r.organ,
@@ -141,7 +168,8 @@
             }));
 
         return {
-            municipio: getMunicipio(records),
+            municipio: getScopeLabel(records),
+            territorio: getTerritorio(records),
             totalPleitos: String(records.length),
             atendidos: String(attended.length),
             emAberto: String(open.length),
@@ -210,13 +238,14 @@
                 linebreaks: true
             });
 
-            doc.render(buildData(records));
+            const reportData = buildData(records);
+            doc.render(reportData);
 
             const data = doc.getZip().generate({
                 type: "blob",
                 mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             });
-            const municipio = buildData(records).municipio;
+            const municipio = reportData.municipio;
 
             saveAs(
                 data,
