@@ -145,7 +145,7 @@
             .map(r => ({
                 area: r.area,
                 organ: r.organ,
-                valor: brl(r.val),
+                valor: `• ${brl(r.val)}`,
                 desc: r.desc
             }));
 
@@ -211,6 +211,38 @@
         return buffer;
     }
 
+    function prepareTemplateFormatting(zip) {
+        const documentFile = zip.file("word/document.xml");
+
+        if (!documentFile) return;
+
+        let documentXml = documentFile.asText();
+
+        documentXml = documentXml.replace(/🏷️/gu, "•");
+        documentXml = documentXml.replace(/➡️/gu, "•");
+
+        const boldParagraphs = (xml, token) => xml.replace(
+            /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g,
+            paragraph => {
+                if (!paragraph.includes(token)) return paragraph;
+
+                return paragraph
+                    .replace(/<w:r>(?!<w:rPr>)/g, '<w:r><w:rPr><w:b/><w:bCs/></w:rPr>')
+                    .replace(/<w:rPr>[\s\S]*?<\/w:rPr>/g, runProperties =>
+                        runProperties.includes("<w:b")
+                            ? runProperties
+                            : runProperties.replace("<w:rPr>", "<w:rPr><w:b/><w:bCs/>")
+                    );
+            }
+        );
+
+        documentXml = boldParagraphs(documentXml, "valor");
+        documentXml = boldParagraphs(documentXml, "organ");
+        documentXml = boldParagraphs(documentXml, "orgao");
+
+        zip.file("word/document.xml", documentXml);
+    }
+
     async function generateWordReport() {
         const records = getRecords();
 
@@ -232,6 +264,7 @@
 
             const content = await loadTemplate();
             const zip = new PizZip(content);
+            prepareTemplateFormatting(zip);
 
             const doc = new window.docxtemplater(zip, {
                 paragraphLoop: true,
