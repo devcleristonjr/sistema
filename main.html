@@ -6,9 +6,9 @@
         <title>Monitoramento de Investimentos</title>
         <!-- Tailwind CSS CDN -->
         <script src="https://cdn.tailwindcss.com"></script>
-        <!-- SheetJS (xlsx) CDN for Parsing and Multi-Sheet Export -->
+        <!-- SheetJS style-capable build for parsing and treated XLSX export -->
         <script
-            src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+            src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
         <script>
         tailwind.config = {
             theme: {
@@ -74,8 +74,8 @@
                             class="flex items-center space-x-2 border-l border-red-300/30 pl-3">
                             <button onclick="exportMultiTabExcel()"
                                 class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition flex items-center gap-1.5 no-print"
-                                title="Exportar Excel Tratado (.xlsx) com múltiplas abas">
-                                <span>&#128202;</span> Excel Tratado
+                                title="Gerar Planilha Tratada (.xlsx) com a mesma estrutura da importada">
+                                <span>&#128202;</span> Planilha Tratada
                             </button>
                             <button onclick="window.print()"
                                 class="bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition flex items-center gap-1.5 no-print"
@@ -117,8 +117,8 @@
                 </div>
                 <div class="pt-2 border-t border-slate-800 flex flex-col gap-2">
                     <button onclick="exportMultiTabExcel()"
-                        class="w-full py-2 bg-emerald-600 text-white text-xs font-bold rounded">Exportar
-                        Excel Tratado (.xlsx)</button>
+                        class="w-full py-2 bg-emerald-600 text-white text-xs font-bold rounded">Gerar
+                        Planilha Tratada (.xlsx)</button>
                     <button onclick="generateWhatsAppSummary()"
                         class="w-full py-2 bg-emerald-500 text-white text-xs font-bold rounded">Resumo
                         WhatsApp</button>
@@ -132,16 +132,16 @@
 
             <!-- Top Quick Import Banner -->
             <div
-                class="relative overflow-hidden rounded-2xl text-white shadow-[0_20px_45px_rgba(20,10,35,0.28)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 border border-white/[0.08] bg-[linear-gradient(115deg,#450a0a_0%,#7f1d1d_35%,#1e1b4b_85%,#0f172a_100%)]">
+                class="relative overflow-hidden rounded-2xl text-white shadow-[0_20px_45px_rgba(20,10,35,0.28)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 border border-white/[0.08] bg-[linear-gradient(115deg,#4f0d0d_0%,#7f1d1d_32%,#a90f0f_68%,#7f1d1d_100%)]">
                 <!-- Decorative glows -->
                 <div
-                    class="pointer-events-none absolute -top-16 -left-16 w-56 h-56 rounded-full bg-red-500/15 blur-3xl"></div>
+                    class="pointer-events-none absolute -top-16 -left-16 w-56 h-56 rounded-full bg-red-300/20 blur-3xl"></div>
                 <div
-                    class="pointer-events-none absolute -bottom-20 right-1/4 w-64 h-64 rounded-full bg-indigo-500/10 blur-3xl"></div>
+                    class="pointer-events-none absolute -bottom-20 right-1/4 w-64 h-64 rounded-full bg-red-400/10 blur-3xl"></div>
 
                 <div class="relative flex items-center gap-4 min-w-0">
                     <div
-                        class="w-9 h-9 rotate-45 rounded-2xl bg-white/[0.08] border border-white/[0.12] backdrop-blur-sm flex items-center justify-center">
+                        class="w-9 h-9 rounded-2xl bg-white/[0.08] border border-white/[0.12] backdrop-blur-sm flex items-center justify-center">
                         <svg class="w-4 h-4 text-red-300/70" fill="none"
                             stroke="currentColor" stroke-width="2"
                             viewBox="0 0 24 24" stroke-linecap="round"
@@ -278,15 +278,6 @@
                         </select>
                     </div>
                     <div class="filter-field">
-                        <label for="filter-area"
-                            class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Área
-                            Temática</label>
-                        <select id="filter-area"
-                            class="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2.5 font-medium focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none transition">
-                            <option value="ALL">Todas as Áreas</option>
-                        </select>
-                    </div>
-                    <div class="filter-field">
                         <label for="filter-search"
                             class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Busca
                             Textual</label>
@@ -308,26 +299,9 @@
             <!-- ========================================================================= -->
             <div id="view-executive-mode" class="space-y-8">
 
-                <!-- Executive Insights Summary Narrative Box -->
-                <section
-                    class="bg-gradient-to-br from-slate-900 via-red-950 to-slate-900 rounded-2xl p-6 text-white shadow-lg space-y-4 border border-red-900/50">
-                    <div class="flex items-center justify-between">
-                        <span
-                            class="text-xs font-bold uppercase tracking-widest text-red-200 bg-red-500/10 px-3 py-1 rounded-full border border-red-400/20">
-                            Síntese Executiva Automática de Insights
-                        </span>
-                        <span class="text-xs text-slate-400 font-medium">Baseado
-                            estritamente nos dados carregados</span>
-                    </div>
-                    <div id="executive-insights-list"
-                        class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs sm:text-sm text-slate-200 leading-relaxed">
-                        <!-- JS Injected Narrative Bullet Points -->
-                    </div>
-                </section>
-
                 <!-- Executive Secretariat Summary Matrix -->
                 <section
-                    class="bg-gradient-to-br from-red-50 via-white to-red-100 p-5 rounded-2xl border border-red-200 shadow-md space-y-4">
+                    class="bg-gradient-to-br from-red-50 via-white to-red-100 p-5 rounded-2xl border border-red-200 shadow-md space-y-5">
                     <div
                         class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200 pb-3">
                         <div>
@@ -347,73 +321,51 @@
                         </div>
                     </div>
 
-                    <div class="overflow-x-auto">
-                        <table id="secretariat-matrix"
-                            class="w-full border border-slate-300 text-[11px] text-slate-800 shadow-sm rounded-xl overflow-hidden">
-                            <thead>
-                                <tr>
-                                    <th
-                                        class="border border-slate-300 bg-gradient-to-r from-red-900 via-red-800 to-red-700 px-2 py-2 text-left font-black uppercase tracking-wide text-white">Total</th>
-                                    <th id="secretariat-header-0"
-                                        class="border border-slate-300 bg-red-100 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
-                                    <th id="secretariat-header-1"
-                                        class="border border-slate-300 bg-red-50 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
-                                    <th id="secretariat-header-2"
-                                        class="border border-slate-300 bg-red-50 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
-                                    <th id="secretariat-header-3"
-                                        class="border border-slate-300 bg-red-100 px-2 py-2 text-center font-black uppercase text-red-900">-</th>
-                                    <th id="secretariat-header-4"
-                                        class="border border-slate-300 bg-amber-50 px-2 py-2 text-center font-black uppercase text-amber-900">-</th>
-                                    <th id="secretariat-header-5"
-                                        class="border border-slate-300 bg-amber-100 px-2 py-2 text-center font-black uppercase text-amber-900">-</th>
-                                </tr>
-                            </thead>
-                            <tbody id="secretariat-matrix-body">
-                                <!-- Injected by JS -->
-                            </tbody>
-                        </table>
+                    <div id="secretariat-summary-grid"
+                        class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 min-w-0">
+                    </div>
+
+                    <div id="secretariat-cards-grid"
+                        class="secretariat-cards-grid grid gap-3 min-w-0">
                     </div>
                 </section>
 
                 <!-- Executive KPI Cards Grid -->
                 <section
-                    class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 min-w-0">
                     <!-- Card 1: Volume de Pleitos -->
                     <div
-                        class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                        class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:shadow transition min-w-0 overflow-hidden">
                         <div
-                            class="flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
-                            <span>Total de Pleitos</span>
+                            class="flex items-center justify-between gap-2 text-[11px] text-slate-500 font-bold uppercase tracking-wider">
+                            <span class="min-w-0">Total de Pleitos</span>
                             <span
-                                class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded">Geral</span>
+                                class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded whitespace-nowrap">Geral</span>
                         </div>
-                        <div class="mt-3 flex items-baseline justify-between">
+                        <div class="mt-3 flex items-end justify-between gap-2 min-w-0">
                             <span id="kpi-exec-total"
-                                class="text-3xl font-extrabold text-slate-900">0</span>
+                                class="text-3xl font-extrabold text-slate-900 leading-none">0</span>
                             <span id="kpi-exec-muni-count"
-                                class="text-xs text-slate-500">0
-                                municípios</span>
+                                class="text-[11px] text-slate-500 whitespace-nowrap">0 municípios</span>
                         </div>
                         <p
-                            class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Cadastrados
-                            no recorte atual</p>
+                            class="text-[11px] text-slate-500 mt-2 border-t border-slate-100 pt-2">Cadastrados no recorte atual</p>
                     </div>
 
                     <!-- Card 2: Taxa de Atendimento -->
                     <div
-                        class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                        class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:shadow transition min-w-0 overflow-hidden">
                         <div
-                            class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-emerald-600">
-                            <span>Taxa de Atendimento</span>
+                            class="flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wider text-emerald-600">
+                            <span class="min-w-0">Taxa de Atendimento</span>
                             <span id="kpi-exec-rate-badge"
-                                class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">0.0%</span>
+                                class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded whitespace-nowrap">0.0%</span>
                         </div>
-                        <div class="mt-3 flex items-baseline justify-between">
+                        <div class="mt-3 flex items-end justify-between gap-2 min-w-0">
                             <span id="kpi-exec-attended-count"
-                                class="text-3xl font-extrabold text-emerald-600">0</span>
+                                class="text-3xl font-extrabold text-emerald-600 leading-none">0</span>
                             <span
-                                class="text-xs text-emerald-700 font-medium">Atendidos
-                                / Concluídos</span>
+                                class="text-[11px] text-emerald-700 font-medium whitespace-nowrap">Atendidos / Concluídos</span>
                         </div>
                         <div
                             class="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden">
@@ -425,98 +377,40 @@
 
                     <!-- Card 3: Investimento Total Atendido -->
                     <div
-                        class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                        class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:shadow transition min-w-0 overflow-hidden">
                         <div
-                            class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-red-600">
-                            <span>Investimento Atendido</span>
+                            class="flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wider text-red-600">
+                            <span class="min-w-0">Investimento Atendido</span>
                             <span
-                                class="bg-red-50 text-red-700 px-2 py-0.5 rounded">Executado</span>
+                                class="bg-red-50 text-red-700 px-2 py-0.5 rounded whitespace-nowrap">Executado</span>
                         </div>
-                        <div class="mt-3">
+                        <div class="mt-3 min-w-0">
                             <span id="kpi-exec-val-attended"
-                                class="text-2xl sm:text-3xl font-extrabold text-red-800">R$
-                                0,00</span>
+                                class="block text-2xl xl:text-3xl font-extrabold text-red-800 leading-none whitespace-nowrap overflow-hidden"
+                                style="display: inline-block; max-width: 100%; text-overflow: ellipsis;">R$ 0,00</span>
                         </div>
                         <p id="kpi-exec-ticket-avg"
-                            class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Ticket
-                            Médio: R$ 0,00</p>
+                            class="text-[11px] text-slate-500 mt-2 border-t border-slate-100 pt-2 whitespace-nowrap overflow-hidden"
+                            style="display: block; max-width: 100%; text-overflow: ellipsis;">Ticket Médio: R$ 0,00</p>
                     </div>
 
                     <!-- Card 4: Passivo Financeiro em Aberto -->
                     <div
-                        class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow transition">
+                        class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:shadow transition min-w-0 overflow-hidden">
                         <div
-                            class="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-amber-600">
-                            <span>Passivo em Aberto</span>
+                            class="flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wider text-amber-600">
+                            <span class="min-w-0">Passivo em Aberto</span>
                             <span id="kpi-exec-open-count"
-                                class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded">0
-                                Pleitos</span>
+                                class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded whitespace-nowrap">0 Pleitos</span>
                         </div>
-                        <div class="mt-3">
+                        <div class="mt-3 min-w-0">
                             <span id="kpi-exec-val-open"
-                                class="text-2xl sm:text-3xl font-extrabold text-amber-600">R$
-                                0,00</span>
+                                class="block text-2xl xl:text-3xl font-extrabold text-amber-600 leading-none whitespace-nowrap overflow-hidden"
+                                style="display: inline-block; max-width: 100%; text-overflow: ellipsis;">R$ 0,00</span>
                         </div>
                         <p
-                            class="text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2">Demandas
-                            pendentes ou em estudo</p>
-                    </div>
-                </section>
-
-                <!-- Concentration & Pareto Analysis Section -->
-                <section
-                    class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-                    <div>
-                        <h3
-                            class="text-lg font-bold text-slate-900 flex items-center gap-2">
-                            <span>&#128201;</span> Análise de Concentração de
-                            Recurso (Pareto)
-                        </h3>
-                        <p class="text-xs text-slate-500">Mapeamento do grau de
-                            centralização financeira nos principais municípios e
-                            órgãos estaduais.</p>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <!-- Top 5 Municipalities Share -->
-                        <div
-                            class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                            <div
-                                class="flex items-center justify-between text-xs font-bold text-slate-800">
-                                <span>Concentração nos Top 5 Municípios</span>
-                                <span id="pareto-top5-pct"
-                                    class="text-red-700 font-extrabold text-sm">0%</span>
-                            </div>
-                            <div
-                                class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-                                <div id="pareto-top5-bar"
-                                    class="bg-red-600 h-3 rounded-full"
-                                    style="width: 0%;"></div>
-                            </div>
-                            <p id="pareto-top5-desc"
-                                class="text-xs text-slate-600">Calculando
-                                participação dos 5 maiores municípios...</p>
-                        </div>
-
-                        <!-- Top 3 Organs Share -->
-                        <div
-                            class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                            <div
-                                class="flex items-center justify-between text-xs font-bold text-slate-800">
-                                <span>Concentração nos Top 3 Órgãos</span>
-                                <span id="pareto-top3-organ-pct"
-                                    class="text-emerald-700 font-extrabold text-sm">0%</span>
-                            </div>
-                            <div
-                                class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-                                <div id="pareto-top3-organ-bar"
-                                    class="bg-emerald-600 h-3 rounded-full"
-                                    style="width: 0%;"></div>
-                            </div>
-                            <p id="pareto-top3-organ-desc"
-                                class="text-xs text-slate-600">Calculando
-                                participação dos 3 maiores órgãos...</p>
-                        </div>
+                            class="text-[11px] text-slate-500 mt-2 border-t border-slate-100 pt-2 whitespace-nowrap overflow-hidden"
+                            style="display: block; max-width: 100%; text-overflow: ellipsis;">Demandas pendentes ou em estudo</p>
                     </div>
                 </section>
 
@@ -545,18 +439,17 @@
                             </button>
                         </div>
                     </div>
-                    <div id="general-table-container" class="overflow-x-auto">
-                        <table class="w-full text-left text-xs text-slate-700">
+                    <div id="general-table-container" class="overflow-x-auto min-w-0">
+                        <table class="w-full text-left text-xs text-slate-700 min-w-0">
                             <thead
                                 class="bg-gradient-to-r from-red-900 via-red-800 to-red-700 text-white font-semibold">
                                 <tr>
-                                    <th class="p-3">Pos.</th>
-                                    <th class="p-3">Município</th>
-                                    <th class="p-3">Órgão</th>
-                                    <th class="p-3">Área</th>
-                                    <th class="p-3">Descrição do Objeto</th>
-                                    <th class="p-3 text-right">Valor (R$)</th>
-                                    <th class="p-3 text-center">Status</th>
+                                    <th class="p-3 min-w-0">Pos.</th>
+                                    <th class="p-3 min-w-0">Município</th>
+                                    <th class="p-3 min-w-0">Órgão</th>
+                                    <th class="p-3 min-w-0 w-[42%] md:w-auto">Descrição do Objeto</th>
+                                    <th class="p-3 text-right min-w-0 whitespace-nowrap">Valor (R$)</th>
+                                    <th class="p-3 text-center min-w-0 whitespace-nowrap">Status</th>
                                 </tr>
                             </thead>
                             <tbody id="general-report-table-body"

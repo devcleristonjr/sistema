@@ -123,6 +123,201 @@ button:hover {
     box-shadow: 0 10px 18px rgba(127, 29, 29, 0.12);
 }
 
+.secretariat-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.secretariat-summary-item {
+    min-width: 0;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    background: rgba(255, 255, 255, 0.82);
+    border-radius: 14px;
+    padding: 0.8rem 0.9rem;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+
+.secretariat-summary-label {
+    display: block;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #475569;
+    margin-bottom: 0.4rem;
+}
+
+.secretariat-summary-value {
+    font-size: 1.08rem;
+    font-weight: 900;
+    color: #0f172a;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.secretariat-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    align-items: stretch;
+}
+
+.secretariat-card {
+    min-width: 0;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    background: rgba(255, 255, 255, 0.96);
+    border-radius: 14px;
+    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.secretariat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 24px rgba(15, 23, 42, 0.07);
+}
+
+.secretariat-card-header {
+    padding: 0.7rem 0.9rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+    color: #fff;
+    background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+    border-bottom: 1px solid rgba(255,255,255,0.22);
+}
+
+.secretariat-card-body {
+    padding: 0.8rem 0.85rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.secretariat-metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.36rem 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    min-width: 0;
+}
+
+.secretariat-metric-row:last-child {
+    border-bottom: none;
+}
+
+.secretariat-metric-label {
+    color: #475569;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.secretariat-metric-value {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: #0f172a;
+    text-align: right;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.secretariat-progress-wrap {
+    width: 100%;
+    height: 7px;
+    background: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 0.05rem;
+    margin-bottom: 0.15rem;
+}
+
+.secretariat-progress-bar {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(34,197,94,0.9) 0%, rgba(22,163,74,1) 100%);
+}
+
+.secretariat-metric-value.positive {
+    color: #166534;
+}
+
+.secretariat-metric-value.warning {
+    color: #b45309;
+}
+
+.secretariat-metric-value.danger {
+    color: #b91c1c;
+}
+
+.secretariat-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 120px;
+    padding: 1.25rem;
+    border: 1px dashed rgba(148, 163, 184, 0.7);
+    border-radius: 16px;
+    background: rgba(248, 250, 252, 0.9);
+    color: #475569;
+    text-align: center;
+}
+
+.secretariat-empty-state strong {
+    font-size: 0.9rem;
+    color: #0f172a;
+}
+
+.secretariat-empty-state span {
+    font-size: 0.72rem;
+    line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+    .secretariat-metric-row {
+        gap: 0.35rem;
+    }
+
+    .secretariat-metric-label {
+        font-size: 8.5px;
+    }
+
+    .secretariat-cards-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media print {
+    .secretariat-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .secretariat-cards-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .secretariat-card,
+    .secretariat-summary-item {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        box-shadow: none !important;
+    }
+
+    .secretariat-card-header {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}
+
 .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;

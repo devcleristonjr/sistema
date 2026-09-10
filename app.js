@@ -5,6 +5,8 @@ const AppState = {
     rawRecords: [],
     normalizedRecords: [],
     filteredRecords: [],
+    pendingUploadedAoa: [],
+    importedSheetName: '',
     showGeneralExecutiveTable: true,
     qualityScore: 100,
     fieldStats: {},
@@ -19,7 +21,6 @@ const AppState = {
         territory: 'ALL',
         organ: 'ALL',
         status: 'ALL',
-        area: 'ALL',
         search: ''
     }
 };
@@ -193,6 +194,229 @@ function normalizeText(value, fallback = '') {
     return String(value).trim();
 }
 
+function cleanExportText(value) {
+    if (value === null || value === undefined) return '';
+
+    return String(value)
+        .replace(/\u00a0/g, ' ')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\r\n|\r|\n/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function normalizeHeaderKey(value) {
+    return stripDiacritics(cleanExportText(value)).toLowerCase();
+}
+
+function parseDateForExport(value) {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value;
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        if (value > 20000 && value < 80000 && XLSX?.SSF?.parse_date_code) {
+            const parsed = XLSX.SSF.parse_date_code(value);
+            if (parsed) {
+                return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d, parsed.H || 0, parsed.M || 0, parsed.S || 0));
+            }
+        }
+        return null;
+    }
+
+    const text = cleanExportText(value);
+    if (!text) return null;
+
+    const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+    if (isoMatch) {
+        const date = new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    const brMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (brMatch) {
+        const year = brMatch[3].length === 2 ? Number(`20${brMatch[3]}`) : Number(brMatch[3]);
+        const date = new Date(
+            year,
+            Number(brMatch[2]) - 1,
+            Number(brMatch[1]),
+            Number(brMatch[4] || 0),
+            Number(brMatch[5] || 0),
+            Number(brMatch[6] || 0)
+        );
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    return null;
+}
+
+function dateToExcelSerial(dateValue) {
+    const date = dateValue instanceof Date ? dateValue : parseDateForExport(dateValue);
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+
+    const utcMillis = Date.UTC(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        date.getHours(),
+        date.getMinutes(),
+        date.getSeconds(),
+        date.getMilliseconds()
+    );
+
+    return (utcMillis - Date.UTC(1899, 11, 30)) / 86400000;
+}
+
+function parsePercentForExport(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value > 1 ? value / 100 : value;
+    }
+
+    const text = cleanExportText(value).replace('%', '').trim();
+    if (!text) return null;
+
+    const normalized = text.replace(/\./g, '').replace(/,/g, '.');
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed > 1 ? parsed / 100 : parsed;
+}
+
+function parseNumericLikeForExport(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+
+    const text = cleanExportText(value);
+    if (!text) return null;
+
+    const normalized = text
+        .replace(/^R\$\s*/i, '')
+        .replace(/\./g, '')
+        .replace(/,/g, '.')
+        .replace(/\s+/g, '');
+
+    if (!/^[-+]?\d*(?:\.\d+)?$/.test(normalized)) {
+        return null;
+    }
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function canonicalizeStatusForExport(value) {
+    const normalized = normalizeStatusValue(value);
+    return STATUS_LABELS[normalized] || cleanExportText(value);
+}
+
+function canonicalizeOrganForExport(value) {
+    return cleanExportText(value)
+        .replace(/\s+/g, ' ')
+        .split(' ')
+        .map((part, index) => {
+            const lower = part.toLowerCase();
+
+            if (['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'na', 'no', 'ao', 'a', 'as', 'os'].includes(lower)) {
+                return lower;
+            }
+
+            if (lower === 's/a' || lower === 'sa') {
+                return 'S.A.';
+            }
+
+            if (index > 0 && /^(sic|cme|dce|sud|sesab|seduc|seinfra|setur|sepromi|seagri|saeb|sae|seds|sedur|serin)$/.test(lower)) {
+                return lower.toUpperCase();
+            }
+
+            return lower.charAt(0).toUpperCase() + lower.slice(1);
+        })
+        .join(' ');
+}
+
+function inferExportColumnProfile(header, samples = []) {
+    const headerKey = normalizeHeaderKey(header);
+    const sampleValues = samples.filter(value => value !== null && value !== undefined && value !== '');
+    const sampleText = sampleValues.map(value => cleanExportText(value)).filter(Boolean);
+
+    if (/situa|status|estag|fase|andamento/.test(headerKey)) {
+        return 'status';
+    }
+
+    if (/percent|porcent|taxa|indice|índice|\bperc\b|%/.test(headerKey) || sampleText.some(text => /%$/.test(text))) {
+        return 'percent';
+    }
+
+    if (/data|dt\b|inicio|início|fim|prazo|emissao|emissão|vencimento|publicacao|publicação|assinatura|atualizacao|atualização/.test(headerKey) || sampleValues.some(value => parseDateForExport(value))) {
+        return 'date';
+    }
+
+    if (/valor|invest|orcam|orçam|custo|montante|recurso|despesa|total|r\$/.test(headerKey)) {
+        return 'currency';
+    }
+
+    if (/quant|qtd|qtde|\bnr\b|numero|número|\bnº\b|\bnum\b|\bid\b/.test(headerKey) && !/process|sei|pleito|protoc|cpf|cnpj|codigo|código/.test(headerKey)) {
+        return 'integer';
+    }
+
+    if (/process|sei|pleito|protoc|cpf|cnpj|codigo|código|registro|ident|chave|matric|cep|contrat|pedido|id/.test(headerKey)) {
+        return 'identifier';
+    }
+
+    return 'text';
+}
+
+function cleanExportCell(value, profile, header) {
+    if (value === null || value === undefined || value === '') {
+        return '';
+    }
+
+    if (value instanceof Date || profile === 'date') {
+        const parsed = parseDateForExport(value);
+        return parsed || cleanExportText(value);
+    }
+
+    if (profile === 'currency') {
+        const parsed = parseNumericLikeForExport(value);
+        return parsed === null ? cleanExportText(value) : parsed;
+    }
+
+    if (profile === 'percent') {
+        const parsed = parsePercentForExport(value);
+        return parsed === null ? cleanExportText(value) : parsed;
+    }
+
+    if (profile === 'integer') {
+        const numeric = parseNumericLikeForExport(value);
+        if (numeric === null || !Number.isFinite(numeric)) {
+            return cleanExportText(value);
+        }
+
+        if (Number.isInteger(numeric)) {
+            return numeric;
+        }
+
+        return Math.trunc(numeric);
+    }
+
+    if (profile === 'status') {
+        return canonicalizeStatusForExport(value);
+    }
+
+    const headerKey = normalizeHeaderKey(header);
+    if (/muni|cidade|localidade/.test(headerKey)) {
+        return normalizeMunicipioName(value, cleanExportText(value));
+    }
+
+    if (/territ/.test(headerKey)) {
+        return normalizeTerritorioName(value, cleanExportText(value));
+    }
+
+    if (/orgao|órgão|secretar|pasta|autarquia|fundacao|fundação/.test(headerKey)) {
+        return canonicalizeOrganForExport(value);
+    }
+
+    return cleanExportText(value);
+}
+
 function stripDiacritics(value) {
     return normalizeText(value, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
@@ -260,6 +484,7 @@ function hygienizeMunicipioAndTerritorioRows(rows) {
 
         const cleanedRow = {
             ...row,
+            sourceAoaRowIndex: row.sourceAoaRowIndex,
             muni: plainMuni,
             municipio: plainMuni,
             territorio: plainTerritorio,
@@ -330,6 +555,25 @@ function matchesStatusFilter(recordStatus, filterValue) {
         default:
             return normalized === filterValue;
     }
+}
+
+function getRecordsMatchingCurrentFilters() {
+    const f = AppState.filters;
+
+    return AppState.normalizedRecords.filter(r => {
+        const matchMuni = f.municipality === 'ALL' || r.muni === f.municipality;
+        const matchTerritory = f.territory === 'ALL' || (r.territorio || 'não consta') === f.territory;
+        const matchOrgan = f.organ === 'ALL' || r.organ === f.organ;
+        const matchStatus = matchesStatusFilter(r.statusStd, f.status);
+        const matchSearch = !f.search ||
+            r.muni.toLowerCase().includes(f.search) ||
+            (r.territorio || 'não consta').toLowerCase().includes(f.search) ||
+            r.organ.toLowerCase().includes(f.search) ||
+            r.desc.toLowerCase().includes(f.search) ||
+            (r.area || '').toLowerCase().includes(f.search);
+
+        return matchMuni && matchTerritory && matchOrgan && matchStatus && matchSearch;
+    });
 }
 
 // CURRENCY & NUMBER FORMATTERS
@@ -422,8 +666,7 @@ function scheduleDatasetAnalysis() {
 function loadInitialDataset(rawList, label) {
     AppState.datasetLabel = label;
     AppState.rawRecords = rawList;
-    AppState.pendingUploadedJson = rawList;
-    AppState.filters = { municipality: 'ALL', territory: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
+    AppState.filters = { municipality: 'ALL', territory: 'ALL', organ: 'ALL', status: 'ALL', search: '' };
     saveDashboardDataset();
 
     // 1. Normalize Records preserving original values
@@ -440,6 +683,8 @@ function loadInitialDataset(rawList, label) {
 
         return {
             id: idx + 1,
+            sourceJsonIndex: Number.isInteger(item.sourceJsonIndex) ? item.sourceJsonIndex : idx,
+            sourceAoaRowIndex: Number.isInteger(item.sourceAoaRowIndex) ? item.sourceAoaRowIndex : (Number.isInteger(item.sourceJsonIndex) ? item.sourceJsonIndex + 1 : idx + 1),
             original: { ...item },
             muni: normMuni,
             territorio: normTerritorio,
@@ -572,7 +817,6 @@ function bindFilterInputs() {
     document.getElementById('filter-territory').addEventListener('change', (e) => { AppState.filters.territory = e.target.value; applyFilters(); });
     document.getElementById('filter-organ').addEventListener('change', (e) => { AppState.filters.organ = e.target.value; applyFilters(); });
     document.getElementById('filter-status').addEventListener('change', (e) => { AppState.filters.status = e.target.value; applyFilters(); });
-    document.getElementById('filter-area').addEventListener('change', (e) => { AppState.filters.area = e.target.value; applyFilters(); });
     document.getElementById('filter-search').addEventListener('input', (e) => { AppState.filters.search = e.target.value.toLowerCase().trim(); applyFilters(); });
 }
 
@@ -592,7 +836,6 @@ function populateFilterOptions() {
     const munis = [...new Set(AppState.normalizedRecords.map(r => r.muni))].sort();
     const territories = [...new Set(AppState.normalizedRecords.map(r => r.territorio || 'não consta'))].sort();
     const organs = [...new Set(AppState.normalizedRecords.map(r => r.organ))].sort();
-    const areas = [...new Set(AppState.normalizedRecords.map(r => r.area))].sort();
 
     const selMuni = document.getElementById('filter-municipality');
     selMuni.innerHTML = '<option value="ALL">Todos os Municípios</option>';
@@ -606,31 +849,12 @@ function populateFilterOptions() {
     selOrgan.innerHTML = '<option value="ALL">Todos os Órgãos</option>';
     organs.forEach(o => selOrgan.add(new Option(o, o)));
 
-    const selArea = document.getElementById('filter-area');
-    selArea.innerHTML = '<option value="ALL">Todas as Áreas</option>';
-    areas.forEach(a => selArea.add(new Option(a, a)));
-
     AppState.filters.municipality = syncFilterSelectValue('filter-municipality', AppState.filters.municipality || 'ALL');
     AppState.filters.territory = syncFilterSelectValue('filter-territory', AppState.filters.territory || 'ALL');
 }
 
 function applyFilters() {
-    const f = AppState.filters;
-    AppState.filteredRecords = AppState.normalizedRecords.filter(r => {
-        const matchMuni = f.municipality === 'ALL' || r.muni === f.municipality;
-        const matchTerritory = f.territory === 'ALL' || (r.territorio || 'não consta') === f.territory;
-        const matchOrgan = f.organ === 'ALL' || r.organ === f.organ;
-        const matchStatus = matchesStatusFilter(r.statusStd, f.status);
-        const matchArea = f.area === 'ALL' || r.area === f.area;
-        const matchSearch = !f.search ||
-            r.muni.toLowerCase().includes(f.search) ||
-            (r.territorio || 'não consta').toLowerCase().includes(f.search) ||
-            r.organ.toLowerCase().includes(f.search) ||
-            r.desc.toLowerCase().includes(f.search) ||
-            r.area.toLowerCase().includes(f.search);
-
-        return matchMuni && matchTerritory && matchOrgan && matchStatus && matchArea && matchSearch;
-    });
+    AppState.filteredRecords = getRecordsMatchingCurrentFilters();
 
     const maxPage = Math.max(1, Math.ceil(AppState.filteredRecords.length / AppState.pageSize) || 1);
     AppState.currentPage = Math.min(AppState.currentPage, maxPage);
@@ -661,7 +885,6 @@ function renderActivePills() {
     if (f.territory !== 'ALL') addPill(`Território: ${f.territory}`, 'territory');
     if (f.organ !== 'ALL') addPill(`Órgão: ${f.organ}`, 'organ');
     if (f.status !== 'ALL') addPill(`Situação: ${f.status}`, 'status');
-    if (f.area !== 'ALL') addPill(`Área: ${f.area}`, 'area');
     if (f.search) addPill(`Busca: "${f.search}"`, 'search');
 
     countLabel.innerText = count > 0 ? `${count} filtro(s) ativo(s)` : 'Sem filtros ativos';
@@ -685,12 +908,11 @@ function clearSingleFilter(key) {
 }
 
 function resetAllFilters() {
-    AppState.filters = { municipality: 'ALL', territory: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
+    AppState.filters = { municipality: 'ALL', territory: 'ALL', organ: 'ALL', status: 'ALL', search: '' };
     document.getElementById('filter-municipality').value = 'ALL';
     document.getElementById('filter-territory').value = 'ALL';
     document.getElementById('filter-organ').value = 'ALL';
     document.getElementById('filter-status').value = 'ALL';
-    document.getElementById('filter-area').value = 'ALL';
     document.getElementById('filter-search').value = '';
     applyFilters();
 }
@@ -853,7 +1075,7 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
     const records = Array.isArray(sourceRecords) ? [...sourceRecords] : [];
 
     if (!records.length) {
-        return '🚨 RESUMO DE INVESTIMENTOS E AÇÕES 🚨\n\nNenhum registro encontrado para o recorte atual.';
+        return '*RESUMO DE INVESTIMENTOS E AÇÕES*\n\nNenhum registro encontrado para o recorte atual.';
     }
 
     const municipalities = [
@@ -880,18 +1102,18 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
 
     const lines = [];
 
-    lines.push(`🚨 RESUMO DE INVESTIMENTOS E AÇÕES – ${municipalityName} 🚨`);
+    lines.push(`*RESUMO DE INVESTIMENTOS E AÇÕES – ${municipalityName}*`);
     lines.push('');
-    lines.push('📊 PANORAMA GERAL');
+    lines.push('*PANORAMA GERAL*');
     lines.push('━━━━━━━━━━━━━━━━━━');
-    lines.push(`🔹 Total de pleitos: ${records.length}`);
-    lines.push(`🟢 Atendidos / Publicados: ${attendedRecords.length}`);
-    lines.push(`🟡 Em aberto: ${openRecords.length}`);
-    lines.push(`💰 Investimentos atendidos/publicados: ${formatWhatsAppShortCurrency(attendedValue)}`);
-    lines.push(`📌 Aproximadamente ${formatBRL(attendedValue)}`);
+    lines.push(`• Total de pleitos: *${records.length}*`);
+    lines.push(`• Atendidos / Publicados: *${attendedRecords.length}*`);
+    lines.push(`• Em aberto: *${openRecords.length}*`);
+    lines.push(`• Investimentos atendidos/publicados: *${formatWhatsAppShortCurrency(attendedValue)}*`);
+    lines.push(`• Aproximadamente *${formatBRL(attendedValue)}*`);
 
     if (cancelledRecords.length > 0) {
-        lines.push(`⚫ Cancelados: ${cancelledRecords.length}`);
+        lines.push(`• Cancelados: *${cancelledRecords.length}*`);
     }
 
     const attendedWithValue = attendedRecords
@@ -923,16 +1145,14 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
     if (attendedWithValue.length > 0 || attendedWithoutValue.length > 0) {
         lines.push('');
         lines.push('━━━━━━━━━━━━━━━━━━');
-        lines.push('🏆 DESTAQUES – MAIORES INVESTIMENTOS');
+        lines.push('*DESTAQUES – MAIORES INVESTIMENTOS*');
         lines.push('━━━━━━━━━━━━━━━━━━');
 
         areaEntries.forEach(([area, areaRecords]) => {
             if (!areaRecords.length) return;
 
-            const icon = getWhatsAppAreaIcon(area);
-
             lines.push('');
-            lines.push(`${icon} ${area}`);
+            lines.push(`*${area}*`);
 
             const organs = [
                 ...new Set(
@@ -943,7 +1163,7 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
             ];
 
             if (organs.length > 0) {
-                lines.push(organs.join(' / '));
+                lines.push(`Secretaria: *${organs.join(' / ')}*`);
             }
 
             areaRecords
@@ -954,30 +1174,30 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
                     const description = shortenWhatsAppDescription(record.desc);
 
                     lines.push('');
-                    lines.push(`💰 ${formatWhatsAppShortCurrency(value)}`);
-                    lines.push(`➡️ ${description}`);
+                    lines.push(`*${formatWhatsAppShortCurrency(value)}*`);
+                    lines.push(`• ${description}`);
 
                     const location = extractWhatsAppLocation(record);
 
                     if (location) {
-                        lines.push(`📍 ${location}`);
+                        lines.push(`• Local: ${location}`);
                     }
                 });
         });
 
         if (attendedWithoutValue.length > 0) {
             lines.push('');
-            lines.push('🏪 VALOR NÃO INFORMADO');
+            lines.push('*VALOR NÃO INFORMADO*');
 
             attendedWithoutValue
                 .slice(0, 8)
                 .forEach(record => {
-                    lines.push(`➡️ ${shortenWhatsAppDescription(record.desc)}`);
+                    lines.push(`• ${shortenWhatsAppDescription(record.desc)}`);
 
                     const organ = normalizeText(record.organ, '');
 
                     if (organ) {
-                        lines.push(`📌 ${organ}`);
+                        lines.push(`• Secretaria: *${organ}*`);
                     }
                 });
         }
@@ -986,7 +1206,7 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
     if (licensingRecords.length > 0) {
         lines.push('');
         lines.push('━━━━━━━━━━━━━━━━━━');
-        lines.push('🛠️ EM LICITAÇÃO');
+        lines.push('*EM LICITAÇÃO*');
         lines.push('━━━━━━━━━━━━━━━━━━');
 
         licensingRecords
@@ -998,23 +1218,23 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
                 lines.push('');
 
                 if (value > 0) {
-                    lines.push(`💰 ${formatWhatsAppShortCurrency(value)}`);
+                    lines.push(`*${formatWhatsAppShortCurrency(value)}*`);
                 } else {
-                    lines.push('💰 Valor não informado');
+                    lines.push('*Valor não informado*');
                 }
 
-                lines.push(`➡️ ${shortenWhatsAppDescription(record.desc)}`);
+                lines.push(`• ${shortenWhatsAppDescription(record.desc)}`);
 
                 const location = extractWhatsAppLocation(record);
 
                 if (location) {
-                    lines.push(`📍 ${location}`);
+                    lines.push(`• Local: ${location}`);
                 }
 
                 const organ = normalizeText(record.organ, '');
 
                 if (organ) {
-                    lines.push(`🏗️ ${organ}`);
+                    lines.push(`• Secretaria: *${organ}*`);
                 }
             });
     }
@@ -1022,7 +1242,7 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
     if (openRecords.length > 0) {
         lines.push('');
         lines.push('━━━━━━━━━━━━━━━━━━');
-        lines.push('🟡 PLEITOS EM ABERTO');
+        lines.push('*PLEITOS EM ABERTO*');
         lines.push('━━━━━━━━━━━━━━━━━━');
 
         const orderedOpen = [...openRecords].sort((a, b) => Number(b.val || 0) - Number(a.val || 0));
@@ -1030,32 +1250,31 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
         orderedOpen
             .slice(0, 15)
             .forEach(record => {
-                const areaIcon = getWhatsAppAreaIcon(record.area);
                 const organ = normalizeText(record.organ, '');
 
                 lines.push('');
 
                 if (organ) {
-                    lines.push(`${areaIcon} ${organ}`);
+                    lines.push(`• Secretaria: *${organ}*`);
                 } else {
-                    lines.push(`${areaIcon} Órgão não informado`);
+                    lines.push('• Secretaria: *Órgão não informado*');
                 }
 
-                lines.push(`➡️ ${shortenWhatsAppDescription(record.desc, 300)}`);
+                lines.push(`• ${shortenWhatsAppDescription(record.desc, 300)}`);
             });
     }
 
     lines.push('');
     lines.push('━━━━━━━━━━━━━━━━━━');
-    lines.push('📌 RESUMO');
+    lines.push('*RESUMO*');
 
-    lines.push(`🟢 ${attendedRecords.length} pleitos atendidos/publicados`);
-    lines.push(`🟡 ${openRecords.length} pleitos em aberto`);
-    lines.push(`💰 ${formatWhatsAppShortCurrency(attendedValue)} em investimentos atendidos/publicados`);
+    lines.push(`• *${attendedRecords.length}* pleitos atendidos/publicados`);
+    lines.push(`• *${openRecords.length}* pleitos em aberto`);
+    lines.push(`• *${formatWhatsAppShortCurrency(attendedValue)}* em investimentos atendidos/publicados`);
 
     if (licensingRecords.length > 0) {
         lines.push(
-            `🚧 ${formatWhatsAppShortCurrency(licensingValue)} em obras em licitação`
+            `• *${formatWhatsAppShortCurrency(licensingValue)}* em obras em licitação`
         );
     }
 
@@ -1165,60 +1384,129 @@ function renderExecutiveModeViews() {
     renderGeneralExecutiveTable();
 }
 
+function formatCompactBRL(value) {
+    const numericValue = Number(value) || 0;
+    const abs = Math.abs(numericValue);
+
+    if (abs >= 1_000_000_000) {
+        const compact = numericValue / 1_000_000_000;
+        return `R$ ${compact.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} bi`;
+    }
+
+    if (abs >= 1_000_000) {
+        const compact = numericValue / 1_000_000;
+        return `R$ ${compact.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} mi`;
+    }
+
+    if (abs >= 1_000) {
+        const compact = numericValue / 1_000;
+        return `R$ ${compact.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} mil`;
+    }
+
+    return formatBRL(numericValue);
+}
+
+function formatInteger(value) {
+    return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(Number(value) || 0);
+}
+
 function renderExecutiveSecretariatMatrix() {
+    const summaryGrid = document.getElementById('secretariat-summary-grid');
+    const cardsGrid = document.getElementById('secretariat-cards-grid');
+
+    if (!summaryGrid || !cardsGrid) return;
+
     const agencies = [...new Set(AppState.filteredRecords.map(r => r.organ))].sort((a, b) => {
         const valB = AppState.filteredRecords.filter(r => r.organ === b).reduce((sum, item) => sum + item.val, 0);
         const valA = AppState.filteredRecords.filter(r => r.organ === a).reduce((sum, item) => sum + item.val, 0);
         return valB - valA;
-    }).slice(0, 6);
-
-    const headerIds = ['secretariat-header-0', 'secretariat-header-1', 'secretariat-header-2', 'secretariat-header-3', 'secretariat-header-4', 'secretariat-header-5'];
-    headerIds.forEach((id, idx) => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.textContent = agencies[idx] || '';
-        }
     });
 
-    const tbody = document.getElementById('secretariat-matrix-body');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    const totals = agencies.map(org => {
-        const items = AppState.filteredRecords.filter(r => r.organ === org);
-        const totalCount = items.length;
-        const atendidos = items.filter(r => r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO').length;
-        const valorAtendido = items.filter(r => r.statusStd === 'ATENDIDO' || r.statusStd === 'CONVENIO').reduce((sum, item) => sum + item.val, 0);
+    const agenciesSummary = agencies.map((agency) => {
+        const items = AppState.filteredRecords.filter(r => r.organ === agency);
+        const total = items.length;
+        const atendidos = items.filter(r => ATTENDED_STATUS_SET.has(r.statusStd)).length;
+        const valorAtendido = items.filter(r => ATTENDED_STATUS_SET.has(r.statusStd)).reduce((sum, item) => sum + item.val, 0);
         const emAberto = items.filter(r => isOpenStatus(r.statusStd)).length;
-        return { org, totalCount, atendidos, valorAtendido, emAberto };
+        const percentual = total > 0 ? (atendidos / total) * 100 : 0;
+
+        return {
+            agency,
+            total,
+            atendidos,
+            valorAtendido,
+            emAberto,
+            percentual
+        };
     });
 
-    const rows = [
-        { label: 'TOTAL', values: totals.map(t => t.totalCount) },
-        { label: 'ATENDIDOS/PÚBLICADOS', values: totals.map(t => t.atendidos) },
-        { label: 'VALOR ATENDIDO', values: totals.map(t => t.valorAtendido) },
-        { label: 'EM ABERTO', values: totals.map(t => t.emAberto) }
+    const totalPleitos = AppState.filteredRecords.length;
+    const totalAtendidos = AppState.filteredRecords.filter(r => ATTENDED_STATUS_SET.has(r.statusStd)).length;
+    const totalValorAtendido = AppState.filteredRecords.filter(r => ATTENDED_STATUS_SET.has(r.statusStd)).reduce((sum, item) => sum + item.val, 0);
+    const totalEmAberto = AppState.filteredRecords.filter(r => isOpenStatus(r.statusStd)).length;
+    const taxaAtendimento = totalPleitos > 0 ? (totalAtendidos / totalPleitos) * 100 : 0;
+
+    const summaryItems = [
+        { label: 'Total de Pleitos', value: formatInteger(totalPleitos) },
+        { label: 'Atendidos / Publicados', value: formatInteger(totalAtendidos) },
+        { label: 'Percentual de Atendimento', value: `${taxaAtendimento.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` },
+        { label: 'Valor Total Atendido', value: formatCompactBRL(totalValorAtendido) },
+        { label: 'Em Aberto', value: formatInteger(totalEmAberto) }
     ];
 
-    rows.forEach((row) => {
-        const tr = document.createElement('tr');
-        const cells = [`<td class="border border-slate-300 bg-slate-50 px-2 py-2 font-black text-slate-700 uppercase">${row.label}</td>`];
+    summaryGrid.innerHTML = summaryItems.map((item) => `
+        <div class="secretariat-summary-item">
+            <span class="secretariat-summary-label">${item.label}</span>
+            <div class="secretariat-summary-value">${item.value}</div>
+        </div>
+    `).join('');
 
-        row.values.forEach((value) => {
-            const style = row.label === 'VALOR ATENDIDO'
-                ? 'bg-emerald-50 text-emerald-800 font-extrabold'
-                : 'bg-slate-50 text-slate-700 font-bold';
+    if (agenciesSummary.length === 0) {
+        cardsGrid.innerHTML = `
+            <div class="secretariat-empty-state">
+                <strong>Sem dados para exibir</strong>
+                <span>O recorte atual não possui órgãos com registros válidos para comparação.</span>
+            </div>
+        `;
+        return;
+    }
 
-            const formattedValue = row.label === 'VALOR ATENDIDO'
-                ? formatBRL(value)
-                : value;
+    cardsGrid.innerHTML = agenciesSummary.map((item) => {
+        const percentual = item.total > 0 ? (item.atendidos / item.total) * 100 : 0;
+        const fullValue = formatBRL(item.valorAtendido);
+        const compactValue = formatCompactBRL(item.valorAtendido);
 
-            cells.push(`<td class="border border-slate-300 px-2 py-2 text-center ${style}">${formattedValue}</td>`);
-        });
-
-        tr.innerHTML = cells.join('');
-        tbody.appendChild(tr);
-    });
+        return `
+            <article class="secretariat-card" title="${item.agency} - Total: ${item.total} - Atendidos: ${item.atendidos} - Valor atendido: ${fullValue} - Em aberto: ${item.emAberto}">
+                <div class="secretariat-card-header">${item.agency}</div>
+                <div class="secretariat-card-body">
+                    <div class="secretariat-metric-row">
+                        <span class="secretariat-metric-label">Total</span>
+                        <span class="secretariat-metric-value">${formatInteger(item.total)}</span>
+                    </div>
+                    <div class="secretariat-metric-row">
+                        <span class="secretariat-metric-label">Atendidos</span>
+                        <span class="secretariat-metric-value positive">${formatInteger(item.atendidos)}</span>
+                    </div>
+                    <div class="secretariat-metric-row">
+                        <span class="secretariat-metric-label">Atendimento</span>
+                        <span class="secretariat-metric-value positive">${percentual.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</span>
+                    </div>
+                    <div class="secretariat-progress-wrap">
+                        <div class="secretariat-progress-bar" style="width: ${Math.min(percentual, 100)}%;"></div>
+                    </div>
+                    <div class="secretariat-metric-row">
+                        <span class="secretariat-metric-label">💰 Valor</span>
+                        <span class="secretariat-metric-value positive" title="${fullValue}">${compactValue}</span>
+                    </div>
+                    <div class="secretariat-metric-row">
+                        <span class="secretariat-metric-label">🟡 Em Aberto</span>
+                        <span class="secretariat-metric-value danger">${formatInteger(item.emAberto)}</span>
+                    </div>
+                </div>
+            </article>
+        `;
+    }).join('');
 }
 
 function toggleGeneralExecutiveTable() {
@@ -1242,7 +1530,7 @@ function renderGeneralExecutiveTable() {
     tbody.innerHTML = '';
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-slate-500">Nenhum registro encontrado para o filtro atual.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-slate-500">Nenhum registro encontrado para o filtro atual.</td></tr>';
         return;
     }
 
@@ -1250,14 +1538,13 @@ function renderGeneralExecutiveTable() {
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-slate-50 border-b border-slate-100';
         tr.innerHTML = `
-                    <td class="p-3 font-black text-red-700">${idx + 1}</td>
-                    <td class="p-3 font-bold text-slate-800">${item.muni}</td>
-                    <td class="p-3 font-semibold text-slate-600">${item.organ}</td>
-                    <td class="p-3 text-slate-600">${item.area || 'Sem área'}</td>
-                    <td class="p-3 text-slate-700">${item.desc}</td>
-                    <td class="p-3 text-right font-extrabold text-slate-900">${formatBRL(item.val)}</td>
-                    <td class="p-3 text-center">
-                        <span class="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-bold ${getStatusBadgeClasses(item.statusStd)}">
+                    <td class="p-3 font-black text-red-700 min-w-0 break-words" style="overflow-wrap: anywhere; word-break: break-word;">${idx + 1}</td>
+                    <td class="p-3 font-bold text-slate-800 min-w-0 break-words" style="overflow-wrap: anywhere; word-break: break-word;">${item.muni}</td>
+                    <td class="p-3 font-semibold text-slate-600 min-w-0 break-words" style="overflow-wrap: anywhere; word-break: break-word;">${item.organ}</td>
+                    <td class="p-3 text-slate-700 min-w-0 break-words" style="overflow-wrap: anywhere; word-break: break-word;">${item.desc}</td>
+                    <td class="p-3 text-right font-extrabold text-slate-900 min-w-0 whitespace-nowrap" style="white-space: nowrap; overflow-wrap: normal;">${formatBRL(item.val)}</td>
+                    <td class="p-3 text-center min-w-0">
+                        <span class="inline-block whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-bold ${getStatusBadgeClasses(item.statusStd)}">
                             ${getStatusLabel(item.statusStd)}
                         </span>
                     </td>
@@ -1268,6 +1555,9 @@ function renderGeneralExecutiveTable() {
 
 function renderExecutiveInsights(total, attended, rate, valAttended, valOpen) {
     const list = document.getElementById('executive-insights-list');
+
+    if (!list) return;
+
     list.innerHTML = '';
 
     const topMuni = getTopMuniByVal();
@@ -1469,7 +1759,6 @@ function openDetailModal(recordId) {
                     <div><strong>Descrição:</strong> ${r.desc}</div>
                     <div><strong>Valor Tratado:</strong> ${formatBRL(r.val)}</div>
                     <div><strong>Situação Padronizada:</strong> ${r.statusStd} (Original: "${r.statusRaw}")</div>
-                    <div><strong>Área Temática:</strong> ${r.area}</div>
                     <div><strong>Prioridade Analítica:</strong> ${r.priority}</div>
                 </div>
                 <div class="bg-amber-50 p-3 rounded-lg border border-amber-200 space-y-1">
@@ -1515,7 +1804,19 @@ function handleSpreadsheetUpload(file) {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
             const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+            const jsonRaw = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+            const json = jsonRaw.map((row, idx) => {
+                const sourceAoaRowIndex = Number.isInteger(row.__rowNum__) ? row.__rowNum__ : idx + 1;
+                return {
+                    ...row,
+                    __sourceAoaRowIndex: sourceAoaRowIndex
+                };
+            });
+            const aoa = XLSX.utils.sheet_to_json(sheet, {
+                header: 1,
+                defval: "",
+                raw: false
+            });
 
             if (!json || json.length === 0) {
                 hideLoadingStatus();
@@ -1524,6 +1825,8 @@ function handleSpreadsheetUpload(file) {
             }
 
             AppState.pendingUploadedJson = json;
+            AppState.pendingUploadedAoa = aoa;
+            AppState.importedSheetName = workbook.SheetNames[0] || 'Planilha 1';
             showLoadingStatus('Normalizando registros...', 'Padronizando municípios, status, valores e áreas da planilha...');
             setTimeout(() => {
                 hideLoadingStatus();
@@ -1559,7 +1862,6 @@ function autoDetectColumnsAndOpenMapper(json) {
         desc: findBestMatch(['descricao', 'objeto', 'pleito', 'acao', 'titulo']),
         val: findBestMatch(['valor', 'investimento', 'orcamento']),
         status: findBestMatch(['situacao', 'status', 'estagio', 'fase']),
-        area: findBestMatch(['area', 'eixo', 'tematica']),
         territorio: findBestMatch(['territorio', 'territorio de identidade', 'territory'])
     };
 
@@ -1572,8 +1874,7 @@ function autoDetectColumnsAndOpenMapper(json) {
         { key: 'organ', label: 'Órgão / Secretaria', req: false },
         { key: 'desc', label: 'Descrição / Pleito (Obrigatório)', req: true },
         { key: 'val', label: 'Valor (R$)', req: false },
-        { key: 'status', label: 'Situação / Status', req: false },
-        { key: 'area', label: 'Área Temática', req: false }
+        { key: 'status', label: 'Situação / Status', req: false }
     ];
 
     targetFields.forEach(f => {
@@ -1603,11 +1904,10 @@ function confirmColumnMapping() {
         organ: getVal('organ'),
         desc: getVal('desc'),
         val: getVal('val'),
-        status: getVal('status'),
-        area: getVal('area')
+        status: getVal('status')
     };
 
-    AppState.filters = { municipality: 'ALL', territory: 'ALL', organ: 'ALL', status: 'ALL', area: 'ALL', search: '' };
+    AppState.filters = { municipality: 'ALL', territory: 'ALL', organ: 'ALL', status: 'ALL', search: '' };
     const filterMunicipio = document.getElementById('filter-municipality');
     if (filterMunicipio) filterMunicipio.value = 'ALL';
     const filterTerritorio = document.getElementById('filter-territory');
@@ -1619,12 +1919,11 @@ function confirmColumnMapping() {
     }
 
     const parsedList = AppState.pendingUploadedJson
-        .map((row) => {
+        .map((row, idx) => {
             const rawMuni = normalizeText(row[mappings.muni], 'Não Especificado');
             const rawTerritorio = normalizeText(row[mappings.territorio], 'não consta');
             const rawOrgan = normalizeText(row[mappings.organ], 'Geral');
             const rawDesc = normalizeText(row[mappings.desc], 'Sem Descrição');
-            const rawArea = normalizeText(row[mappings.area], 'Infraestrutura e Geral');
             const rawStatus = normalizeText(row[mappings.status], 'Em Aberto');
             const rawValue = parseNumericValue(row[mappings.val] ?? 0);
 
@@ -1633,13 +1932,15 @@ function confirmColumnMapping() {
             }
 
             return {
+                sourceAoaRowIndex: Number.isInteger(row.__sourceAoaRowIndex) ? row.__sourceAoaRowIndex : idx + 1,
+                sourceJsonIndex: idx,
                 muni: rawMuni,
                 territorio: rawTerritorio,
                 organ: rawOrgan,
                 desc: rawDesc,
                 val: rawValue,
                 status: rawStatus,
-                area: rawArea || 'Infraestrutura e Geral'
+                area: 'Infraestrutura e Geral'
             };
         })
         .filter(Boolean);
@@ -1660,30 +1961,187 @@ function closeMapperModal() {
     document.getElementById('column-mapper-modal').classList.add('hidden');
 }
 
-// MULTI-TAB EXCEL EXPORT (SHEETJS)
+function buildExportRangeFromAoa(aoa) {
+    const rowCount = Array.isArray(aoa) ? aoa.length : 0;
+    const columnCount = rowCount ? Math.max(...aoa.map(row => Array.isArray(row) ? row.length : 0)) : 0;
+    return { rowCount, columnCount };
+}
+
+function getExcelColumnName(index) {
+    let column = index + 1;
+    let name = '';
+
+    while (column > 0) {
+        const remainder = (column - 1) % 26;
+        name = String.fromCharCode(65 + remainder) + name;
+        column = Math.floor((column - 1) / 26);
+    }
+
+    return name;
+}
+
+function estimateColumnWidth(header, samples, profile) {
+    const textLength = Math.max(
+        cleanExportText(header).length,
+        ...samples.map(value => cleanExportText(value).length)
+    );
+
+    const capped = Math.min(60, Math.max(12, textLength + 2));
+
+    if (profile === 'date') return Math.max(12, Math.min(16, capped));
+    if (profile === 'currency') return Math.max(14, Math.min(18, capped));
+    if (profile === 'percent') return Math.max(10, Math.min(12, capped));
+    if (profile === 'integer') return Math.max(10, Math.min(14, capped));
+    if (profile === 'status') return Math.max(14, Math.min(20, capped));
+
+    return capped;
+}
+
+function createStyledCell(value, profile, isHeader = false, isAlt = false, isStatus = false) {
+    const cell = { v: value };
+
+    if (value === null || value === undefined || value === '') {
+        cell.t = 's';
+        cell.v = '';
+    } else if (value instanceof Date) {
+        cell.t = 'n';
+        cell.v = dateToExcelSerial(value);
+        cell.z = 'dd/mm/yyyy';
+    } else if (profile === 'currency' || profile === 'percent' || profile === 'integer') {
+        cell.t = 'n';
+        if (profile === 'currency') cell.z = 'R$ #,##0.00';
+        if (profile === 'percent') cell.z = '0.00%';
+        if (profile === 'integer') cell.z = '0';
+    } else {
+        cell.t = 's';
+        cell.v = cleanExportText(value);
+    }
+
+    cell.s = {
+        font: {
+            name: 'Calibri',
+            sz: isHeader ? 11 : 10,
+            bold: isHeader,
+            color: { rgb: isHeader ? 'FFFFFF' : '1F2937' }
+        },
+        fill: isHeader
+            ? { patternType: 'solid', fgColor: { rgb: '991B1B' } }
+            : isStatus
+                ? { patternType: 'solid', fgColor: { rgb: 'FEE2E2' } }
+                : isAlt
+                    ? { patternType: 'solid', fgColor: { rgb: 'F8FAFC' } }
+                    : { patternType: 'solid', fgColor: { rgb: 'FFFFFF' } },
+        alignment: {
+            vertical: 'center',
+            horizontal: profile === 'currency' || profile === 'percent' || profile === 'integer' ? 'right' : 'left',
+            wrapText: profile === 'text' || profile === 'status' || profile === 'identifier'
+        },
+        border: {
+            top: { style: 'thin', color: { rgb: 'E5E7EB' } },
+            bottom: { style: 'thin', color: { rgb: 'E5E7EB' } },
+            left: { style: 'thin', color: { rgb: 'E5E7EB' } },
+            right: { style: 'thin', color: { rgb: 'E5E7EB' } }
+        }
+    };
+
+    return cell;
+}
+
 function exportMultiTabExcel() {
+    const sourceAoa = Array.isArray(AppState.pendingUploadedAoa) ? AppState.pendingUploadedAoa : [];
+    const filteredRecords = getRecordsMatchingCurrentFilters();
+
+    if (!sourceAoa.length) {
+        alert('Importe uma planilha antes de gerar a planilha tratada.');
+        return;
+    }
+
+    if (!filteredRecords.length) {
+        alert('Não há registros no recorte atual para gerar a planilha tratada.');
+        return;
+    }
+
+    const headerRow = sourceAoa[0] || [];
+    const filteredRowIndexes = new Set(
+        filteredRecords
+            .map(record => Number(record.sourceAoaRowIndex))
+            .filter(index => Number.isInteger(index) && index > 0)
+    );
+    const dataRows = sourceAoa
+        .slice(1)
+        .map((row, index) => ({ row, sourceAoaRowIndex: index + 1 }))
+        .filter(entry => filteredRowIndexes.has(entry.sourceAoaRowIndex))
+        .map(entry => entry.row);
+
+    if (!dataRows.length) {
+        alert('Não há registros no recorte atual para gerar a planilha tratada.');
+        return;
+    }
+
+    const exportHeaderRow = headerRow;
+    const exportDataRows = dataRows;
+    const { columnCount } = buildExportRangeFromAoa(sourceAoa);
+
+    if (!columnCount) {
+        alert('A planilha importada não possui colunas válidas para exportação.');
+        return;
+    }
+
     const wb = XLSX.utils.book_new();
+    const ws = {};
+    const columnProfiles = exportHeaderRow.map((header, colIndex) => {
+        const samples = exportDataRows.slice(0, 200).map(row => row?.[colIndex]);
+        return inferExportColumnProfile(header, samples);
+    });
+    const columnWidths = exportHeaderRow.map((header, colIndex) => {
+        const samples = exportDataRows.slice(0, 200).map(row => cleanExportCell(row?.[colIndex], columnProfiles[colIndex], header));
+        return { wch: estimateColumnWidth(header, samples, columnProfiles[colIndex]) };
+    });
 
-    const dataBase = AppState.filteredRecords.map(r => ({
-        ID: r.id,
-        Município: r.muni,
-        Órgão: r.organ,
-        Descrição: r.desc,
-        Valor: r.val,
-        Situação: r.statusStd,
-        Área: r.area,
-        Prioridade: r.priority
+    for (let colIndex = 0; colIndex < columnCount; colIndex++) {
+        const address = `${getExcelColumnName(colIndex)}1`;
+        const headerValue = cleanExportText(exportHeaderRow[colIndex] ?? '');
+        ws[address] = createStyledCell(headerValue, 'text', true, false, false);
+    }
+
+    exportDataRows.forEach((row, rowIndex) => {
+        const excelRowIndex = rowIndex + 2;
+        const isAltRow = rowIndex % 2 === 1;
+
+        for (let colIndex = 0; colIndex < columnCount; colIndex++) {
+            const headerValue = exportHeaderRow[colIndex] ?? '';
+            const profile = columnProfiles[colIndex] || 'text';
+            const originalValue = Array.isArray(row) ? row[colIndex] : '';
+            const cleanedValue = cleanExportCell(originalValue, profile, headerValue);
+            const address = `${getExcelColumnName(colIndex)}${excelRowIndex}`;
+            const isStatus = /situa|status|estag|fase|andamento/.test(normalizeHeaderKey(headerValue));
+
+            ws[address] = createStyledCell(cleanedValue, profile, false, isAltRow, isStatus);
+        }
+    });
+
+    ws['!ref'] = `A1:${getExcelColumnName(columnCount - 1)}${exportDataRows.length + 1}`;
+    ws['!cols'] = columnWidths;
+    ws['!autofilter'] = { ref: ws['!ref'] };
+    ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+    ws['!rows'] = [{ hpt: 24 }].concat(exportDataRows.map((row, rowIndex) => {
+        const rowValues = Array.isArray(row) ? row : [];
+        const rowText = rowValues.map((cell, colIndex) => cleanExportCell(cell, columnProfiles[colIndex], exportHeaderRow[colIndex]));
+        const longest = Math.max(...rowText.map(text => cleanExportText(text).length), 0);
+        const height = Math.min(96, Math.max(18, Math.ceil(longest / 35) * 18));
+        return { hpt: rowIndex === 0 ? 24 : height };
     }));
-    const wsBase = XLSX.utils.json_to_sheet(dataBase);
-    XLSX.utils.book_append_sheet(wb, wsBase, "Base Tratada");
+    ws['!pageSetup'] = {
+        orientation: columnCount > 5 ? 'landscape' : 'portrait',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0
+    };
 
-    const summary = [
-        { Indicador: "Total de Pleitos", Valor: AppState.filteredRecords.length },
-        { Indicador: "Investimento Atendido", Valor: AppState.filteredRecords.filter(r => r.statusStd === 'ATENDIDO').reduce((a, b) => a + b.val, 0) },
-        { Indicador: "Investimento em Aberto", Valor: AppState.filteredRecords.filter(r => r.statusStd === 'EM_ABERTO').reduce((a, b) => a + b.val, 0) }
-    ];
-    const wsSummary = XLSX.utils.json_to_sheet(summary);
-    XLSX.utils.book_append_sheet(wb, wsSummary, "Resumo Executivo");
+    XLSX.utils.book_append_sheet(wb, ws, 'Planilha Tratada');
+    wb.Workbook = wb.Workbook || {};
+    wb.Workbook.Views = [{ RTL: false }];
 
-    XLSX.writeFile(wb, `relatorio_investimentos_tratado_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const outputName = `planilha_tratada_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, outputName, { cellStyles: true, bookSST: true });
 }
