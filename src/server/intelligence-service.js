@@ -1,0 +1,1115 @@
+import fs from 'node:fs/promises';
+import XLSX from 'xlsx';
+import PizZip from 'pizzip';
+import Docxtemplater from 'docxtemplater';
+
+const STATUS_LABELS = {
+  ATENDIDO: 'Atendido',
+  EM_ABERTO: 'Em Aberto',
+  EM_ESTUDO: 'Em Estudo',
+  CONVENIO: 'Convênio',
+  LICITACAO: 'Licitação',
+  CANCELADO: 'Cancelado'
+};
+
+const OPEN_STATUS_SET = new Set(['EM_ABERTO', 'EM_ESTUDO', 'LICITACAO']);
+const ATTENDED_STATUS_SET = new Set(['ATENDIDO', 'CONVENIO']);
+
+const MUNICIPALITY_ALIASES = {
+  'dario meira': 'Dário Meira',
+  dario: 'Dário',
+  ipiau: 'Ipiaú',
+  ipiacu: 'Ipiaú',
+  piau: 'Ipiaú',
+  abaira: 'Abaíra',
+  abare: 'Abaré',
+  'abaré': 'Abaré',
+  aiquara: 'Aiquara',
+  anage: 'Anagé',
+  'anagé': 'Anagé',
+  'barra do rocha': 'Barra do Rocha',
+  'sento se': 'Sento Sé',
+  'sento sé': 'Sento Sé',
+  'vitoria da conquista': 'Vitória da Conquista',
+  'vitória da conquista': 'Vitória da Conquista',
+  'porto seguro': 'Porto Seguro',
+  'sao felipe': 'São Felipe',
+  'sao jose': 'São José',
+  'sa jose': 'São José',
+  cachoeira: 'Cachoeira',
+  'varzea da rocha': 'Várzea da Rocha',
+  varzea: 'Várzea',
+  ibirataia: 'Ibirataia',
+  ibira: 'Ibirataia',
+  itamari: 'Itamari',
+  itagi: 'Itagi',
+  itagiba: 'Itagibá',
+  jitauna: 'Jitaúna',
+  'jitaúna': 'Jitaúna',
+  'nova ibia': 'Nova Ibiá',
+  ubata: 'Ubatá',
+  gongogi: 'Gongogi',
+  gongoji: 'Gongogi',
+  itapetinga: 'Itapetinga',
+  camacari: 'Camaçari',
+  'camaçari': 'Camaçari',
+  'feira de santana': 'Feira de Santana',
+  caetite: 'Caateté',
+  'caateté': 'Caateté'
+};
+
+const TERRITORY_ALIASES = {
+  itaparica: 'Itaparica',
+  'sao francisco': 'São Francisco',
+  'vale do sao francisco': 'Vale do São Francisco',
+  'vale do são francisco': 'Vale do São Francisco',
+  'chapada diamantina': 'Chapada Diamantina',
+  'medio rio de contas': 'Médio Rio de Contas',
+  'medio rio': 'Médio Rio',
+  reconcavo: 'Recôncavo',
+  'recôncavo': 'Recôncavo',
+  'litoral norte': 'Litoral Norte',
+  'litoral sul': 'Litoral Sul',
+  'sul da bahia': 'Sul da Bahia',
+  'extremo sul': 'Extremo Sul',
+  'campo alegre de lourdes': 'Campo Alegre de Lourdes'
+};
+
+const DEFAULT_FILTERS = {
+  municipality: 'ALL',
+  territory: 'ALL',
+  organ: 'ALL',
+  status: 'ALL',
+  search: ''
+};
+
+function normalizeText(value, fallback = '') {
+  if (value === null || value === undefined) return fallback;
+  return String(value).trim();
+}
+
+function stripDiacritics(value) {
+  return normalizeText(value, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function normalizeNameKey(value) {
+  return stripDiacritics(normalizeText(value, ''))
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function canonicalizeDisplayName(value, fallback = '') {
+  const raw = normalizeText(value, fallback);
+  if (!raw) return fallback;
+
+  return raw
+    .replace(/\s+/g, ' ')
+    .replace(/[-–—]/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((part, index) => {
+      const lower = part.toLowerCase();
+      if (index > 0 && ['da', 'de', 'do', 'dos', 'das', 'e', 'em', 'na', 'no', 'a', 'ao', 'as', 'os'].includes(lower)) {
+        return lower;
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+}
+
+function normalizeMunicipioName(value, fallback = 'Não Especificado') {
+  const raw = normalizeText(value, fallback);
+  if (!raw || raw === fallback) return fallback;
+  const key = normalizeNameKey(raw);
+  return key ? MUNICIPALITY_ALIASES[key] || canonicalizeDisplayName(raw, fallback) : fallback;
+}
+
+function normalizeTerritorioName(value, fallback = 'não consta') {
+  const raw = normalizeText(value, fallback);
+  if (!raw || raw === fallback) return fallback;
+  const key = normalizeNameKey(raw);
+  return key ? TERRITORY_ALIASES[key] || canonicalizeDisplayName(raw, fallback) : fallback;
+}
+
+function normalizeStatusValue(rawStatus) {
+  const cleaned = stripDiacritics(normalizeText(rawStatus, 'EM_ABERTO')).toLowerCase();
+
+  if (cleaned.includes('conclu') || cleaned.includes('atendid') || cleaned.includes('entreg') || cleaned.includes('finaliz')) return 'ATENDIDO';
+  if (cleaned.includes('conven')) return 'CONVENIO';
+  if (cleaned.includes('licit')) return 'LICITACAO';
+  if (cleaned.includes('estud') || cleaned.includes('analis') || cleaned.includes('avali')) return 'EM_ESTUDO';
+  if (cleaned.includes('aberto') || cleaned.includes('pend')) return 'EM_ABERTO';
+  if (cleaned.includes('cancel')) return 'CANCELADO';
+  return 'EM_ABERTO';
+}
+
+function parseNumericValue(value) {
+  if (typeof value === 'number' && !Number.isNaN(value)) return value;
+  if (typeof value !== 'string') return 0;
+
+  const cleaned = value
+    .replace(/R\$/gi, '')
+    .replaceAll('.', '')
+    .replaceAll(',', '.')
+    .replace(/\s+/g, '')
+    .trim();
+
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isOpenStatus(statusValue) {
+  return OPEN_STATUS_SET.has(String(statusValue || '').toUpperCase());
+}
+
+function isAttendedStatus(statusValue) {
+  return ATTENDED_STATUS_SET.has(String(statusValue || '').toUpperCase());
+}
+
+function classifyAreaByText(desc) {
+  const text = normalizeText(desc, '').toLowerCase();
+  if (text.includes('escola') || text.includes('colegio') || text.includes('quadra') || text.includes('ginasio') || text.includes('creche')) return 'Educação e Esporte';
+  if (text.includes('agua') || text.includes('esgoto') || text.includes('drenagem') || text.includes('canal') || text.includes('eta')) return 'Saneamento, Drenagem e Água';
+  if (text.includes('pista') || text.includes('paviment') || text.includes('estrada') || text.includes('acesso') || text.includes('ponte')) return 'Infraestrutura e Mobilidade';
+  if (text.includes('casa') || text.includes('habitac') || text.includes('praca') || text.includes('lagoa')) return 'Habitação e Urbanização';
+  if (text.includes('mercado') || text.includes('feira') || text.includes('cacau') || text.includes('rural')) return 'Desenvolvimento Rural e Feiras';
+  if (text.includes('hospital') || text.includes('ubs') || text.includes('policia') || text.includes('delegacia')) return 'Saúde e Segurança Pública';
+  return 'Infraestrutura e Geral';
+}
+
+function computePriority(val, statusStd) {
+  const status = String(statusStd || '').toUpperCase();
+
+  if (status === 'CANCELADO') return 'BAIXA';
+  if (status === 'ATENDIDO' || status === 'CONVENIO') return val >= 10000000 ? 'MÉDIA' : 'BAIXA';
+  if (status === 'LICITACAO') return val >= 5000000 ? 'ALTA' : 'MÉDIA';
+  if (status === 'EM_ESTUDO') {
+    if (val >= 7000000) return 'ALTA';
+    if (val >= 2000000) return 'MÉDIA';
+    return 'BAIXA';
+  }
+  if (isOpenStatus(status)) {
+    if (val >= 8000000) return 'ALTA';
+    if (val >= 2000000) return 'MÉDIA';
+  }
+  return 'BAIXA';
+}
+
+function stringSimilarity(textA, textB) {
+  const normalizedA = String(textA || '').toLowerCase().replace(/[^\w\s]/g, '');
+  const normalizedB = String(textB || '').toLowerCase().replace(/[^\w\s]/g, '');
+  if (normalizedA === normalizedB) return 1;
+
+  const wordsA = new Set(normalizedA.split(/\s+/).filter(Boolean));
+  const wordsB = new Set(normalizedB.split(/\s+/).filter(Boolean));
+  const intersection = new Set([...wordsA].filter((word) => wordsB.has(word)));
+  const union = new Set([...wordsA, ...wordsB]);
+
+  return union.size ? intersection.size / union.size : 0;
+}
+
+function hygienizeMunicipioAndTerritorioRows(rows) {
+  const seen = new Set();
+  const nextRows = [];
+
+  rows.forEach((row) => {
+    const plainMuni = normalizeMunicipioName(row.muni || row.municipio || row.MUNICIPIO || row['Município'] || 'Não Especificado');
+    const plainTerritorio = normalizeTerritorioName(row.territorio || row.territory || row.TERRITORIO || row['Território'] || row['territorio de identidade'] || 'não consta');
+
+    const cleanedRow = {
+      ...row,
+      sourceAoaRowIndex: row.sourceAoaRowIndex,
+      muni: plainMuni,
+      municipio: plainMuni,
+      territorio: plainTerritorio,
+      territory: plainTerritorio,
+      TERRITORIO: plainTerritorio,
+      MUNICIPIO: plainMuni
+    };
+
+    const rowKey = JSON.stringify({
+      muni: normalizeNameKey(cleanedRow.muni),
+      territorio: normalizeNameKey(cleanedRow.territorio || 'não consta'),
+      organ: normalizeNameKey(cleanedRow.organ || cleanedRow.orgao || 'Geral'),
+      desc: normalizeNameKey(cleanedRow.desc || cleanedRow.descricao || 'Sem Descrição'),
+      status: normalizeNameKey(cleanedRow.status || cleanedRow.statusRaw || 'Em Aberto'),
+      area: normalizeNameKey(cleanedRow.area || 'Infraestrutura e Geral'),
+      val: Number(cleanedRow.val ?? 0)
+    });
+
+    if (!seen.has(rowKey)) {
+      seen.add(rowKey);
+      nextRows.push(cleanedRow);
+    }
+  });
+
+  return nextRows;
+}
+
+function auditDataQuality(normalizedRecords) {
+  const total = normalizedRecords.length;
+  if (!total) {
+    return {
+      qualityScore: 0,
+      fieldStats: {}
+    };
+  }
+
+  let muniValid = 0;
+  let organValid = 0;
+  let descValid = 0;
+  let valValid = 0;
+  let statusValid = 0;
+
+  normalizedRecords.forEach((record) => {
+    if (record.muni && record.muni !== 'Não Especificado') muniValid += 1;
+    if (record.organ && record.organ !== 'Geral') organValid += 1;
+    if (record.desc && record.desc !== 'Sem Descrição') descValid += 1;
+    if (typeof record.val === 'number' && !Number.isNaN(record.val) && record.val >= 0) valValid += 1;
+    if (record.statusRaw) statusValid += 1;
+  });
+
+  const fieldStats = {
+    muni: Math.round((muniValid / total) * 100),
+    organ: Math.round((organValid / total) * 100),
+    desc: Math.round((descValid / total) * 100),
+    val: Math.round((valValid / total) * 100),
+    status: Math.round((statusValid / total) * 100)
+  };
+
+  const qualityScore = Math.round((fieldStats.muni + fieldStats.organ + fieldStats.desc + fieldStats.val + fieldStats.status) / 5);
+  return { qualityScore, fieldStats };
+}
+
+function detectDuplicates(normalizedRecords) {
+  const duplicates = [];
+
+  for (let firstIndex = 0; firstIndex < normalizedRecords.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < normalizedRecords.length; secondIndex += 1) {
+      const first = normalizedRecords[firstIndex];
+      const second = normalizedRecords[secondIndex];
+
+      if (first.muni.toLowerCase() !== second.muni.toLowerCase()) continue;
+      if (first.organ.toLowerCase() !== second.organ.toLowerCase()) continue;
+
+      const similarity = stringSimilarity(first.desc, second.desc);
+      if (similarity >= 0.75) {
+        duplicates.push({
+          item1: first,
+          item2: second,
+          similarity: Math.round(similarity * 100)
+        });
+      }
+    }
+  }
+
+  return duplicates;
+}
+
+function matchesStatusFilter(recordStatus, filterValue) {
+  if (filterValue === 'ALL') return true;
+  const normalized = String(recordStatus || '').toUpperCase();
+
+  switch (filterValue) {
+    case 'ATENDIDO':
+      return normalized === 'ATENDIDO' || normalized === 'CONVENIO';
+    case 'EM_ABERTO':
+      return isOpenStatus(normalized);
+    case 'CONVENIO':
+      return normalized === 'CONVENIO';
+    case 'LICITACAO':
+      return normalized === 'LICITACAO';
+    case 'EM_ESTUDO':
+      return normalized === 'EM_ESTUDO';
+    case 'CANCELADO':
+      return normalized === 'CANCELADO';
+    default:
+      return normalized === filterValue;
+  }
+}
+
+function applyFilters(normalizedRecords, rawFilters = DEFAULT_FILTERS) {
+  const filters = {
+    ...DEFAULT_FILTERS,
+    ...rawFilters,
+    search: normalizeText(rawFilters.search, '').toLowerCase()
+  };
+
+  const filteredRecords = normalizedRecords.filter((record) => {
+    const matchMuni = filters.municipality === 'ALL' || record.muni === filters.municipality;
+    const matchTerritory = filters.territory === 'ALL' || (record.territorio || 'não consta') === filters.territory;
+    const matchOrgan = filters.organ === 'ALL' || record.organ === filters.organ;
+    const matchStatus = matchesStatusFilter(record.statusStd, filters.status);
+    const matchSearch = !filters.search
+      || record.muni.toLowerCase().includes(filters.search)
+      || (record.territorio || 'não consta').toLowerCase().includes(filters.search)
+      || record.organ.toLowerCase().includes(filters.search)
+      || record.desc.toLowerCase().includes(filters.search)
+      || String(record.area || '').toLowerCase().includes(filters.search);
+
+    return matchMuni && matchTerritory && matchOrgan && matchStatus && matchSearch;
+  });
+
+  return { filters, filteredRecords };
+}
+
+function sortLocale(values) {
+  return [...values].sort((left, right) => left.localeCompare(right, 'pt-BR'));
+}
+
+function buildFilterOptions(normalizedRecords) {
+  return {
+    municipalities: sortLocale(new Set(normalizedRecords.map((record) => record.muni).filter(Boolean))),
+    territories: sortLocale(new Set(normalizedRecords.map((record) => record.territorio || 'não consta').filter(Boolean))),
+    organs: sortLocale(new Set(normalizedRecords.map((record) => record.organ).filter(Boolean)))
+  };
+}
+
+function formatBRL(value) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value) || 0);
+}
+
+function formatWhatsAppShortCurrency(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return 'R$ 0,00';
+  if (amount >= 1000000) {
+    return `R$ ${(amount / 1000000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi`;
+  }
+  if (amount >= 1000) {
+    return `R$ ${(amount / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mil`;
+  }
+  return formatBRL(amount);
+}
+
+function shortenWhatsAppDescription(description, maxLength = 240) {
+  const text = normalizeText(description, 'Sem Descrição').replace(/\s+/g, ' ').trim();
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength - 3).trim()}...`;
+}
+
+function extractWhatsAppLocation(record) {
+  const original = record?.original || {};
+  const candidates = [
+    original.localizacao,
+    original.localização,
+    original.endereco,
+    original.endereço,
+    original.comunidade,
+    original.local,
+    original.bairro,
+    original.distrito,
+    original.territorio_local,
+    original.território_local
+  ];
+
+  const found = candidates.find((value) => normalizeText(value, '').trim());
+  if (found) return normalizeText(found).trim();
+
+  const desc = normalizeText(record?.desc, '');
+  const patterns = [
+    /na\s+(Sede[^,.]*)/i,
+    /no\s+(Distrito[^,.]*)/i,
+    /na\s+(Comunidade[^,.]*)/i,
+    /no\s+(Bairro[^,.]*)/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(desc);
+    if (match?.[1]) return match[1].trim();
+  }
+
+  return '';
+}
+
+function getWhatsAppAreaTitle(area) {
+  const text = normalizeText(area, 'Infraestrutura e Geral').toLowerCase();
+  if (text.includes('infraestrutura') || text.includes('mobilidade') || text.includes('rodovia')) return 'INFRAESTRUTURA E RODOVIAS';
+  if (text.includes('educação') || text.includes('educacao')) return 'EDUCAÇÃO';
+  if (text.includes('saneamento') || text.includes('água') || text.includes('agua') || text.includes('drenagem')) return 'ÁGUA E SANEAMENTO';
+  if (text.includes('esporte')) return 'ESPORTE E LAZER';
+  if (text.includes('saúde') || text.includes('saude')) return 'SAÚDE';
+  if (text.includes('segurança') || text.includes('seguranca')) return 'SEGURANÇA PÚBLICA';
+  if (text.includes('rural') || text.includes('desenvolvimento')) return 'DESENVOLVIMENTO RURAL';
+  if (text.includes('habitação') || text.includes('habitacao') || text.includes('urbanização') || text.includes('urbanizacao')) return 'HABITAÇÃO E URBANIZAÇÃO';
+  return 'OUTRAS ÁREAS';
+}
+
+function buildWhatsAppExecutiveSummary(records, filters) {
+  if (!records.length) {
+    return '*RESUMO DE INVESTIMENTOS E AÇÕES*\n\nNenhum registro encontrado para o recorte atual.';
+  }
+
+  const municipalities = [...new Set(records.map((record) => record.muni).filter(Boolean))];
+  const territories = [...new Set(records.map((record) => record.territorio).filter(Boolean))];
+  let municipalityName = 'BAHIA';
+
+  if (filters.municipality !== 'ALL') {
+    municipalityName = filters.municipality.toUpperCase();
+  } else if (filters.territory !== 'ALL') {
+    municipalityName = `TERRITÓRIO ${filters.territory}`.toUpperCase();
+  } else if (municipalities.length === 1) {
+    municipalityName = municipalities[0].toUpperCase();
+  } else if (territories.length === 1) {
+    municipalityName = `TERRITÓRIO ${territories[0]}`.toUpperCase();
+  }
+
+  const attendedRecords = records.filter((record) => isAttendedStatus(record.statusStd));
+  const openRecords = records.filter((record) => isOpenStatus(record.statusStd));
+  const licensingRecords = records.filter((record) => String(record.statusStd || '').toUpperCase() === 'LICITACAO');
+  const cancelledRecords = records.filter((record) => String(record.statusStd || '').toUpperCase() === 'CANCELADO');
+  const attendedValue = attendedRecords.reduce((total, record) => total + Number(record.val || 0), 0);
+  const licensingValue = licensingRecords.reduce((total, record) => total + Number(record.val || 0), 0);
+  const lines = [
+    `*RESUMO DE INVESTIMENTOS E AÇÕES – ${municipalityName}*`,
+    '',
+    '*PANORAMA GERAL*',
+    '━━━━━━━━━━━━━━━━━━',
+    `• Total de pleitos: *${records.length}*`,
+    `• Atendidos / Publicados: *${attendedRecords.length}*`,
+    `• Em aberto: *${openRecords.length}*`,
+    `• Investimentos atendidos/publicados: *${formatWhatsAppShortCurrency(attendedValue)}*`,
+    `• Aproximadamente *${formatBRL(attendedValue)}*`
+  ];
+
+  if (cancelledRecords.length > 0) {
+    lines.push(`• Cancelados: *${cancelledRecords.length}*`);
+  }
+
+  const attendedWithValue = attendedRecords.filter((record) => Number(record.val || 0) > 0).toSorted((left, right) => Number(right.val || 0) - Number(left.val || 0));
+  const attendedWithoutValue = attendedRecords.filter((record) => Number(record.val || 0) <= 0);
+  const groupedAreas = {};
+
+  attendedWithValue.forEach((record) => {
+    const area = getWhatsAppAreaTitle(record.area);
+    groupedAreas[area] = groupedAreas[area] || [];
+    groupedAreas[area].push(record);
+  });
+
+  const areaEntries = Object.entries(groupedAreas).toSorted(([, recordsA], [, recordsB]) => {
+    const totalA = recordsA.reduce((sum, record) => sum + Number(record.val || 0), 0);
+    const totalB = recordsB.reduce((sum, record) => sum + Number(record.val || 0), 0);
+    return totalB - totalA;
+  });
+
+  if (attendedWithValue.length > 0 || attendedWithoutValue.length > 0) {
+    lines.push('', '━━━━━━━━━━━━━━━━━━', '*DESTAQUES – MAIORES INVESTIMENTOS*', '━━━━━━━━━━━━━━━━━━');
+
+    areaEntries.forEach(([area, areaRecords]) => {
+      if (!areaRecords.length) return;
+
+      lines.push('', `*${area}*`);
+      const organs = [...new Set(areaRecords.map((record) => normalizeText(record.organ, '')).filter(Boolean))];
+      if (organs.length > 0) {
+        lines.push(`Secretaria: *${organs.join(' / ')}*`);
+      }
+
+      areaRecords.slice(0, 5).forEach((record) => {
+        const value = Number(record.val || 0);
+        lines.push('', `*${formatWhatsAppShortCurrency(value)}*`, `• ${shortenWhatsAppDescription(record.desc)}`);
+        const location = extractWhatsAppLocation(record);
+        if (location) lines.push(`• Local: ${location}`);
+      });
+    });
+
+    if (attendedWithoutValue.length > 0) {
+      lines.push('', '*VALOR NÃO INFORMADO*');
+      attendedWithoutValue.slice(0, 8).forEach((record) => {
+        lines.push(`• ${shortenWhatsAppDescription(record.desc)}`);
+        const organ = normalizeText(record.organ, '');
+        if (organ) lines.push(`• Secretaria: *${organ}*`);
+      });
+    }
+  }
+
+  if (licensingRecords.length > 0) {
+    lines.push('', '━━━━━━━━━━━━━━━━━━', '*EM LICITAÇÃO*', '━━━━━━━━━━━━━━━━━━');
+    licensingRecords.toSorted((left, right) => Number(right.val || 0) - Number(left.val || 0)).slice(0, 10).forEach((record) => {
+      const value = Number(record.val || 0);
+      lines.push('');
+      lines.push(value > 0 ? `*${formatWhatsAppShortCurrency(value)}*` : '*Valor não informado*');
+      lines.push(`• ${shortenWhatsAppDescription(record.desc)}`);
+      const location = extractWhatsAppLocation(record);
+      if (location) lines.push(`• Local: ${location}`);
+      const organ = normalizeText(record.organ, '');
+      if (organ) lines.push(`• Secretaria: *${organ}*`);
+    });
+  }
+
+  if (openRecords.length > 0) {
+    lines.push('', '━━━━━━━━━━━━━━━━━━', '*PLEITOS EM ABERTO*', '━━━━━━━━━━━━━━━━━━');
+    openRecords.toSorted((left, right) => Number(right.val || 0) - Number(left.val || 0)).slice(0, 15).forEach((record) => {
+      const organ = normalizeText(record.organ, '');
+      lines.push('');
+      lines.push(organ ? `• Secretaria: *${organ}*` : '• Secretaria: *Órgão não informado*');
+      lines.push(`• ${shortenWhatsAppDescription(record.desc, 300)}`);
+    });
+  }
+
+  lines.push('', '━━━━━━━━━━━━━━━━━━', '*RESUMO*');
+  lines.push(`• *${attendedRecords.length}* pleitos atendidos/publicados`);
+  lines.push(`• *${openRecords.length}* pleitos em aberto`);
+  lines.push(`• *${formatWhatsAppShortCurrency(attendedValue)}* em investimentos atendidos/publicados`);
+  if (licensingRecords.length > 0) {
+    lines.push(`• *${formatWhatsAppShortCurrency(licensingValue)}* em obras em licitação`);
+  }
+
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function cleanExportText(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replaceAll('\u00a0', ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\r\n|\r|\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeHeaderKey(value) {
+  return stripDiacritics(cleanExportText(value)).toLowerCase();
+}
+
+function parseDateForExport(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value > 20000 && value < 80000 && XLSX?.SSF?.parse_date_code) {
+      const parsed = XLSX.SSF.parse_date_code(value);
+      if (parsed) {
+        return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d, parsed.H || 0, parsed.M || 0, parsed.S || 0));
+      }
+    }
+    return null;
+  }
+
+  const text = cleanExportText(value);
+  if (!text) return null;
+
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/.exec(text);
+  if (isoMatch) {
+    const date = new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const brMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(text);
+  if (!brMatch) return null;
+
+  const year = brMatch[3].length === 2 ? Number(`20${brMatch[3]}`) : Number(brMatch[3]);
+  const date = new Date(year, Number(brMatch[2]) - 1, Number(brMatch[1]), Number(brMatch[4] || 0), Number(brMatch[5] || 0), Number(brMatch[6] || 0));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateToExcelSerial(dateValue) {
+  const date = dateValue instanceof Date ? dateValue : parseDateForExport(dateValue);
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  const utcMillis = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
+  return (utcMillis - Date.UTC(1899, 11, 30)) / 86400000;
+}
+
+function parsePercentForExport(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value > 1 ? value / 100 : value;
+  const text = cleanExportText(value).replace('%', '').trim();
+  if (!text) return null;
+  const parsed = Number(text.replaceAll('.', '').replaceAll(',', '.'));
+  if (!Number.isFinite(parsed)) return null;
+  return parsed > 1 ? parsed / 100 : parsed;
+}
+
+function parseNumericLikeForExport(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const text = cleanExportText(value);
+  if (!text) return null;
+
+  const normalized = text
+    .replace(/^R\$\s*/i, '')
+    .replaceAll('.', '')
+    .replaceAll(',', '.')
+    .replace(/\s+/g, '');
+
+  if (!/^[-+]?\d*(?:\.\d+)?$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function canonicalizeStatusForExport(value) {
+  const normalized = normalizeStatusValue(value);
+  return STATUS_LABELS[normalized] || cleanExportText(value);
+}
+
+function canonicalizeOrganForExport(value) {
+  return cleanExportText(value)
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((part, index) => {
+      const lower = part.toLowerCase();
+      if (['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'na', 'no', 'ao', 'a', 'as', 'os'].includes(lower)) return lower;
+      if (lower === 's/a' || lower === 'sa') return 'S.A.';
+      if (index > 0 && /^(sic|cme|dce|sud|sesab|seduc|seinfra|setur|sepromi|seagri|saeb|sae|seds|sedur|serin)$/.test(lower)) {
+        return lower.toUpperCase();
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+}
+
+function inferExportColumnProfile(header, samples = []) {
+  const headerKey = normalizeHeaderKey(header);
+  const sampleValues = samples.filter((value) => value !== null && value !== undefined && value !== '');
+  const sampleText = sampleValues.map((value) => cleanExportText(value)).filter(Boolean);
+
+  if (/situa|status|estag|fase|andamento/.test(headerKey)) return 'status';
+  if (/percent|porcent|taxa|indice|índice|\bperc\b|%/.test(headerKey) || sampleText.some((text) => text.endsWith('%'))) return 'percent';
+  if (/data|dt\b|inicio|início|fim|prazo|emissao|emissão|vencimento|publicacao|publicação|assinatura|atualizacao|atualização/.test(headerKey) || sampleValues.some((value) => parseDateForExport(value))) return 'date';
+  if (/valor|invest|orcam|orçam|custo|montante|recurso|despesa|total|r\$/.test(headerKey)) return 'currency';
+  if (/quant|qtd|qtde|\bnr\b|numero|número|\bnº\b|\bnum\b|\bid\b/.test(headerKey) && !/process|sei|pleito|protoc|cpf|cnpj|codigo|código/.test(headerKey)) return 'integer';
+  if (/process|sei|pleito|protoc|cpf|cnpj|codigo|código|registro|ident|chave|matric|cep|contrat|pedido|id/.test(headerKey)) return 'identifier';
+  return 'text';
+}
+
+function cleanExportCell(value, profile, header) {
+  if (value === null || value === undefined || value === '') return '';
+  if (value instanceof Date || profile === 'date') return parseDateForExport(value) || cleanExportText(value);
+  if (profile === 'currency') return parseNumericLikeForExport(value) ?? cleanExportText(value);
+  if (profile === 'percent') return parsePercentForExport(value) ?? cleanExportText(value);
+  if (profile === 'integer') {
+    const numeric = parseNumericLikeForExport(value);
+    if (numeric === null || !Number.isFinite(numeric)) return cleanExportText(value);
+    return Number.isInteger(numeric) ? numeric : Math.trunc(numeric);
+  }
+  if (profile === 'status') return canonicalizeStatusForExport(value);
+  const headerKey = normalizeHeaderKey(header);
+  if (/muni|cidade|localidade/.test(headerKey)) return normalizeMunicipioName(value, cleanExportText(value));
+  if (/territ/.test(headerKey)) return normalizeTerritorioName(value, cleanExportText(value));
+  if (/orgao|órgão|secretar|pasta|autarquia|fundacao|fundação/.test(headerKey)) return canonicalizeOrganForExport(value);
+  return cleanExportText(value);
+}
+
+function buildExportRangeFromAoa(aoa) {
+  const rowCount = Array.isArray(aoa) ? aoa.length : 0;
+  const columnCount = rowCount ? Math.max(...aoa.map((row) => Array.isArray(row) ? row.length : 0)) : 0;
+  return { rowCount, columnCount };
+}
+
+function getExcelColumnName(index) {
+  let column = index + 1;
+  let name = '';
+  while (column > 0) {
+    const remainder = (column - 1) % 26;
+    name = String.fromCharCode(65 + remainder) + name;
+    column = Math.floor((column - 1) / 26);
+  }
+  return name;
+}
+
+function estimateColumnWidth(header, samples, profile) {
+  const textLength = Math.max(cleanExportText(header).length, ...samples.map((value) => cleanExportText(value).length));
+  const capped = Math.min(60, Math.max(12, textLength + 2));
+  if (profile === 'date') return Math.max(12, Math.min(16, capped));
+  if (profile === 'currency') return Math.max(14, Math.min(18, capped));
+  if (profile === 'percent') return Math.max(10, Math.min(12, capped));
+  if (profile === 'integer') return Math.max(10, Math.min(14, capped));
+  if (profile === 'status') return Math.max(14, Math.min(20, capped));
+  return capped;
+}
+
+function createStyledCell(value, profile, isHeader = false, isAlt = false, isStatus = false) {
+  const cell = { v: value };
+
+  if (value === null || value === undefined || value === '') {
+    cell.t = 's';
+    cell.v = '';
+  } else if (value instanceof Date) {
+    cell.t = 'n';
+    cell.v = dateToExcelSerial(value);
+    cell.z = 'dd/mm/yyyy';
+  } else if (profile === 'currency' || profile === 'percent' || profile === 'integer') {
+    cell.t = 'n';
+    if (profile === 'currency') cell.z = 'R$ #,##0.00';
+    if (profile === 'percent') cell.z = '0.00%';
+    if (profile === 'integer') cell.z = '0';
+  } else {
+    cell.t = 's';
+    cell.v = cleanExportText(value);
+  }
+
+  cell.s = {
+    font: {
+      name: 'Calibri',
+      sz: isHeader ? 11 : 10,
+      bold: isHeader,
+      color: { rgb: isHeader ? 'FFFFFF' : '1F2937' }
+    },
+    fill: isHeader
+      ? { patternType: 'solid', fgColor: { rgb: '991B1B' } }
+      : isStatus
+        ? { patternType: 'solid', fgColor: { rgb: 'FEE2E2' } }
+        : isAlt
+          ? { patternType: 'solid', fgColor: { rgb: 'F8FAFC' } }
+          : { patternType: 'solid', fgColor: { rgb: 'FFFFFF' } },
+    alignment: {
+      vertical: 'center',
+      horizontal: ['currency', 'percent', 'integer'].includes(profile) ? 'right' : 'left',
+      wrapText: ['text', 'status', 'identifier'].includes(profile)
+    },
+    border: {
+      top: { style: 'thin', color: { rgb: 'E5E7EB' } },
+      bottom: { style: 'thin', color: { rgb: 'E5E7EB' } },
+      left: { style: 'thin', color: { rgb: 'E5E7EB' } },
+      right: { style: 'thin', color: { rgb: 'E5E7EB' } }
+    }
+  };
+
+  return cell;
+}
+
+function fileNameSlug(value) {
+  return String(value || 'municipio')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+}
+
+function getScopeLabel(records, filters) {
+  if (filters.municipality && filters.municipality !== 'ALL') return filters.municipality;
+  if (filters.territory && filters.territory !== 'ALL') return `Território ${filters.territory}`;
+
+  const municipalities = [...new Set(records.map((record) => record.muni).filter(Boolean))];
+  if (municipalities.length === 1) return municipalities[0];
+  const territories = [...new Set(records.map((record) => record.territorio).filter(Boolean))];
+  if (territories.length === 1) return `Território ${territories[0]}`;
+  throw new Error('Selecione um município ou território no filtro antes de gerar o relatório Word.');
+}
+
+function millions(value) {
+  return `R$ ${((Number(value) || 0) / 1000000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} milhões`;
+}
+
+function buildWordTemplateData(records, filters) {
+  const attended = records.filter((record) => record.statusStd === 'ATENDIDO' || record.statusStd === 'CONVENIO');
+  const open = records.filter((record) => ['EM_ABERTO', 'EM_ESTUDO', 'LICITACAO'].includes(record.statusStd));
+  const attendedInvestment = attended.reduce((sum, record) => sum + record.val, 0);
+  const openInvestment = open.reduce((sum, record) => sum + record.val, 0);
+  const desiredHighlightCount = Math.max(8, Math.min(15, open.length));
+
+  const highlights = attended
+    .toSorted((left, right) => right.val - left.val)
+    .slice(0, desiredHighlightCount)
+    .map((record) => ({
+      area: record.area,
+      organ: record.organ,
+      valor: `• ${formatBRL(record.val)}`,
+      desc: record.desc
+    }));
+
+  const groups = new Map();
+  for (const record of open) {
+    if (!groups.has(record.organ)) groups.set(record.organ, []);
+    groups.get(record.organ).push({ descricao: record.desc, valor: formatBRL(record.val) });
+  }
+
+  const abertos = [...groups.entries()]
+    .sort((left, right) => left[0].localeCompare(right[0], 'pt-BR'))
+    .map(([orgao, itens]) => ({ orgao, itens }));
+
+  return {
+    municipio: getScopeLabel(records, filters),
+    territorio: filters.territory !== 'ALL' ? filters.territory : ([...new Set(records.map((record) => record.territorio).filter(Boolean))][0] || 'não consta'),
+    totalPleitos: String(records.length),
+    atendidos: String(attended.length),
+    emAberto: String(open.length),
+    investimentoMi: millions(attendedInvestment),
+    investimentoTotal: formatBRL(attendedInvestment),
+    investimentoAberto: formatBRL(openInvestment),
+    destaques: highlights,
+    abertos
+  };
+}
+
+function prepareTemplateFormatting(zip) {
+  const documentFile = zip.file('word/document.xml');
+  if (!documentFile) return;
+
+  let documentXml = documentFile.asText();
+  documentXml = documentXml.replace(/🏷️/gu, '•').replace(/➡️/gu, '•');
+  documentXml = documentXml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paragraph) => {
+    if (!paragraph.includes('valor') && !paragraph.includes('organ') && !paragraph.includes('orgao')) return paragraph;
+
+    return paragraph
+      .replace(/<w:r>(?!<w:rPr>)/g, '<w:r><w:rPr><w:b/><w:bCs/></w:rPr>')
+      .replace(/<w:rPr>[\s\S]*?<\/w:rPr>/g, (runProperties) => runProperties.includes('<w:b') ? runProperties : runProperties.replace('<w:rPr>', '<w:rPr><w:b/><w:bCs/>'));
+  });
+
+  zip.file('word/document.xml', documentXml);
+}
+
+export function parseWorkbookBuffer(buffer, label = 'planilha') {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const sheetName = workbook.SheetNames[0] || 'Planilha 1';
+  const sheet = workbook.Sheets[sheetName];
+  const jsonRows = XLSX.utils.sheet_to_json(sheet, { defval: '' }).map((row, index) => ({
+    ...row,
+    __sourceAoaRowIndex: Number.isInteger(row.__rowNum__) ? row.__rowNum__ : index + 1
+  }));
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+
+  if (!jsonRows.length) {
+    const error = new Error(`A planilha ${label} está vazia.`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return {
+    sheetName,
+    jsonRows,
+    aoa,
+    columns: Object.keys(jsonRows[0] || {})
+      .filter((key) => !key.startsWith('__'))
+  };
+}
+
+export function suggestColumnMappings(jsonRows) {
+  const sample = jsonRows[0] || {};
+  const keys = Object.keys(sample).filter((key) => !key.startsWith('__'));
+
+  const findBestMatch = (candidates) => keys.find((key) => {
+    const cleanKey = key.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    return candidates.some((candidate) => cleanKey.includes(candidate));
+  }) || '';
+
+  return {
+    muni: findBestMatch(['municipio', 'cidade', 'localidade']),
+    organ: findBestMatch(['orgao', 'secretaria', 'pasta']),
+    desc: findBestMatch(['descricao', 'objeto', 'pleito', 'acao', 'titulo']),
+    val: findBestMatch(['valor', 'investimento', 'orcamento']),
+    status: findBestMatch(['situacao', 'status', 'estagio', 'fase']),
+    territorio: findBestMatch(['territorio', 'territorio de identidade', 'territory'])
+  };
+}
+
+export function normalizeDatasetFromMapping(dataset, mappings) {
+  if (!mappings.muni || !mappings.desc) {
+    const error = new Error('Selecione colunas válidas para Município e Descrição.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const parsedList = dataset.jsonRows
+    .map((row, index) => {
+      const rawMuni = normalizeText(row[mappings.muni], 'Não Especificado');
+      const rawTerritorio = normalizeText(row[mappings.territorio], 'não consta');
+      const rawOrgan = normalizeText(row[mappings.organ], 'Geral');
+      const rawDesc = normalizeText(row[mappings.desc], 'Sem Descrição');
+      const rawStatus = normalizeText(row[mappings.status], 'Em Aberto');
+      const rawValue = parseNumericValue(row[mappings.val] ?? 0);
+
+      if (!rawMuni || !rawDesc) return null;
+
+      return {
+        sourceAoaRowIndex: Number.isInteger(row.__sourceAoaRowIndex) ? row.__sourceAoaRowIndex : index + 1,
+        sourceJsonIndex: index,
+        muni: rawMuni,
+        territorio: rawTerritorio,
+        organ: rawOrgan,
+        desc: rawDesc,
+        val: rawValue,
+        status: rawStatus,
+        area: 'Infraestrutura e Geral'
+      };
+    })
+    .filter(Boolean);
+
+  if (!parsedList.length) {
+    const error = new Error('Nenhum registro válido foi encontrado após o mapeamento da planilha.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const hygienized = hygienizeMunicipioAndTerritorioRows(parsedList);
+  const normalizedRecords = hygienized.map((item, index) => {
+    const sourceAoaRowIndex = Number.isInteger(item.sourceAoaRowIndex)
+      ? item.sourceAoaRowIndex
+      : (Number.isInteger(item.sourceJsonIndex) ? item.sourceJsonIndex + 1 : index + 1);
+    const normMuni = normalizeMunicipioName(item.muni || item.municipio || 'Não Especificado');
+    const normTerritorio = normalizeTerritorioName(item.territorio || item.territory || item.TERRITORIO || 'não consta');
+    const normOrgan = normalizeText(item.organ || item.orgao || 'Geral');
+    const normDesc = normalizeText(item.desc || item.descricao || item.pleito || 'Sem Descrição');
+    const normVal = parseNumericValue(item.val ?? item.valor ?? item.valorTratado ?? 0);
+    const statusRaw = normalizeText(item.status || item.situacao || 'Em Aberto');
+    const statusStd = normalizeStatusValue(statusRaw);
+    const area = normalizeText(item.area || item.eixo || classifyAreaByText(normDesc));
+    const priority = computePriority(normVal, statusStd);
+
+    return {
+      id: index + 1,
+      sourceJsonIndex: Number.isInteger(item.sourceJsonIndex) ? item.sourceJsonIndex : index,
+      sourceAoaRowIndex,
+      original: { ...item },
+      muni: normMuni,
+      territorio: normTerritorio,
+      organ: normOrgan,
+      desc: normDesc,
+      val: normVal,
+      statusRaw,
+      statusStd,
+      area,
+      priority
+    };
+  });
+
+  return {
+    normalizedRecords,
+    ...auditDataQuality(normalizedRecords),
+    detectedDuplicates: detectDuplicates(normalizedRecords)
+  };
+}
+
+export function buildSnapshot(dataset, options) {
+  const { filters, filteredRecords } = applyFilters(dataset.normalizedRecords || [], options.filters || DEFAULT_FILTERS);
+  const currentPage = Number(options.currentPage || 1);
+  const pageSize = Number(options.pageSize || 25);
+  const maxPage = Math.max(1, Math.ceil(filteredRecords.length / pageSize) || 1);
+  const safePage = Math.min(Math.max(1, currentPage), maxPage);
+  const pageStart = (safePage - 1) * pageSize;
+  const pageRecords = filteredRecords.slice(pageStart, pageStart + pageSize);
+
+  return {
+    datasetId: dataset.id,
+    datasetLabel: dataset.datasetLabel,
+    importedSheetName: dataset.importedSheetName,
+    filters,
+    filterOptions: buildFilterOptions(dataset.normalizedRecords || []),
+    qualityScore: dataset.qualityScore || 0,
+    fieldStats: dataset.fieldStats || {},
+    detectedDuplicates: dataset.detectedDuplicates || [],
+    normalizedRecords: dataset.normalizedRecords || [],
+    filteredRecords,
+    pageRecords,
+    currentPage: safePage,
+    pageSize,
+    totalFiltered: filteredRecords.length,
+    whatsappSummaryText: buildWhatsAppExecutiveSummary(filteredRecords.length ? filteredRecords : (dataset.normalizedRecords || []), filters)
+  };
+}
+
+export function buildWorkbookFromDataset(dataset, filters) {
+  const { filteredRecords } = applyFilters(dataset.normalizedRecords || [], filters);
+  const sourceAoa = Array.isArray(dataset.aoa) ? dataset.aoa : [];
+
+  if (!sourceAoa.length) {
+    const error = new Error('Importe uma planilha antes de gerar a planilha tratada.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!filteredRecords.length) {
+    const error = new Error('Não há registros no recorte atual para gerar a planilha tratada.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const headerRow = sourceAoa[0] || [];
+  const filteredRowIndexes = new Set(filteredRecords.map((record) => Number(record.sourceAoaRowIndex)).filter((index) => Number.isInteger(index) && index > 0));
+  const dataRows = sourceAoa
+    .slice(1)
+    .map((row, index) => ({ row, sourceAoaRowIndex: index + 1 }))
+    .filter((entry) => filteredRowIndexes.has(entry.sourceAoaRowIndex))
+    .map((entry) => entry.row);
+
+  if (!dataRows.length) {
+    const error = new Error('Não há registros no recorte atual para gerar a planilha tratada.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const { columnCount } = buildExportRangeFromAoa(sourceAoa);
+  if (!columnCount) {
+    const error = new Error('A planilha importada não possui colunas válidas para exportação.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const worksheet = {};
+  const columnProfiles = headerRow.map((header, columnIndex) => inferExportColumnProfile(header, dataRows.slice(0, 200).map((row) => row?.[columnIndex])));
+  const columnWidths = headerRow.map((header, columnIndex) => ({
+    wch: estimateColumnWidth(header, dataRows.slice(0, 200).map((row) => cleanExportCell(row?.[columnIndex], columnProfiles[columnIndex], header)), columnProfiles[columnIndex])
+  }));
+
+  for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+    const address = `${getExcelColumnName(columnIndex)}1`;
+    const headerValue = cleanExportText(headerRow[columnIndex] ?? '');
+    worksheet[address] = createStyledCell(headerValue, 'text', true, false, false);
+  }
+
+  dataRows.forEach((row, rowIndex) => {
+    const excelRowIndex = rowIndex + 2;
+    const isAltRow = rowIndex % 2 === 1;
+
+    for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+      const headerValue = headerRow[columnIndex] ?? '';
+      const profile = columnProfiles[columnIndex] || 'text';
+      const originalValue = Array.isArray(row) ? row[columnIndex] : '';
+      const cleanedValue = cleanExportCell(originalValue, profile, headerValue);
+      const address = `${getExcelColumnName(columnIndex)}${excelRowIndex}`;
+      const isStatus = /situa|status|estag|fase|andamento/.test(normalizeHeaderKey(headerValue));
+      worksheet[address] = createStyledCell(cleanedValue, profile, false, isAltRow, isStatus);
+    }
+  });
+
+  worksheet['!ref'] = `A1:${getExcelColumnName(columnCount - 1)}${dataRows.length + 1}`;
+  worksheet['!cols'] = columnWidths;
+  worksheet['!autofilter'] = { ref: worksheet['!ref'] };
+  worksheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+  worksheet['!rows'] = [{ hpt: 24 }].concat(dataRows.map((row) => {
+    const rowValues = Array.isArray(row) ? row : [];
+    const rowText = rowValues.map((cell, columnIndex) => cleanExportCell(cell, columnProfiles[columnIndex], headerRow[columnIndex]));
+    const longest = Math.max(...rowText.map((text) => cleanExportText(text).length), 0);
+    return { hpt: Math.min(96, Math.max(18, Math.ceil(longest / 35) * 18)) };
+  }));
+  worksheet['!pageSetup'] = {
+    orientation: columnCount > 5 ? 'landscape' : 'portrait',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0
+  };
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Planilha Tratada');
+  workbook.Workbook = workbook.Workbook || {};
+  workbook.Workbook.Views = [{ RTL: false }];
+
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellStyles: true, bookSST: true });
+}
+
+export async function buildWordReport({ dataset, filters, templatePath }) {
+  const { filteredRecords } = applyFilters(dataset.normalizedRecords || [], filters);
+
+  if (!filteredRecords.length) {
+    const error = new Error('Não há dados filtrados para gerar o relatório.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const template = await fs.readFile(templatePath);
+  const zip = new PizZip(template);
+  prepareTemplateFormatting(zip);
+
+  const document = new Docxtemplater(zip, {
+    paragraphLoop: true,
+    linebreaks: true
+  });
+
+  const reportData = buildWordTemplateData(filteredRecords, filters);
+  document.render(reportData);
+
+  return {
+    fileName: `relatorio-investimentos-${fileNameSlug(reportData.municipio)}.docx`,
+    buffer: document.getZip().generate({
+      type: 'nodebuffer',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    })
+  };
+}

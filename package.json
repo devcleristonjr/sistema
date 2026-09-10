@@ -1,0 +1,35 @@
+{
+  "name": "sistema",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:css": "tailwindcss -i ./tailwind.input.css -o ./tailwind.css --minify",
+    "predev": "npm run build:css",
+    "dev": "cross-env NODE_ENV=development node server.js",
+    "prebuild": "npm run build:css",
+    "build": "node scripts/build.mjs",
+    "render:build": "npm install && npm run build",
+    "render:start": "cross-env NODE_ENV=production node server.js",
+    "prestart": "npm run build",
+    "start": "cross-env NODE_ENV=production node server.js",
+    "check": "node --check app.js && node --check word-export.js && node --check server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+      "docxtemplater": "^3.69.3",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "multer": "^2.0.2",
+    "pizzip": "^3.2.0",
+    "xlsx": "^0.18.5",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "cross-env": "^10.0.0",
+    "esbuild": "^0.25.9",
+    "tailwindcss": "^3.4.17"
+  }
+}
