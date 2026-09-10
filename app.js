@@ -1078,6 +1078,9 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
         return '*RESUMO DE INVESTIMENTOS E AÇÕES*\n\nNenhum registro encontrado para o recorte atual.';
     }
 
+    const selectedMunicipality = AppState?.filters?.municipality;
+    const selectedTerritory = AppState?.filters?.territory;
+
     const municipalities = [
         ...new Set(
             records
@@ -1086,10 +1089,24 @@ function buildWhatsAppExecutiveSummary(sourceRecords) {
         )
     ];
 
+    const territories = [
+        ...new Set(
+            records
+                .map(record => normalizeTerritorioName(record.territorio || record.territory || ''))
+                .filter(Boolean)
+        )
+    ];
+
     let municipalityName = 'BAHIA';
 
-    if (municipalities.length === 1) {
+    if (selectedMunicipality && selectedMunicipality !== 'ALL') {
+        municipalityName = selectedMunicipality.toUpperCase();
+    } else if (selectedTerritory && selectedTerritory !== 'ALL') {
+        municipalityName = `TERRITÓRIO ${selectedTerritory}`.toUpperCase();
+    } else if (municipalities.length === 1) {
         municipalityName = municipalities[0].toUpperCase();
+    } else if (territories.length === 1) {
+        municipalityName = `TERRITÓRIO ${territories[0]}`.toUpperCase();
     }
 
     const attendedRecords = records.filter(record => isAttendedStatus(record.statusStd));
@@ -1416,11 +1433,13 @@ function renderExecutiveSecretariatMatrix() {
 
     if (!summaryGrid || !cardsGrid) return;
 
-    const agencies = [...new Set(AppState.filteredRecords.map(r => r.organ))].sort((a, b) => {
-        const valB = AppState.filteredRecords.filter(r => r.organ === b).reduce((sum, item) => sum + item.val, 0);
-        const valA = AppState.filteredRecords.filter(r => r.organ === a).reduce((sum, item) => sum + item.val, 0);
-        return valB - valA;
-    });
+    const agencies = [...new Set(AppState.filteredRecords.map(r => r.organ))]
+        .filter(agency => agency && agency.trim().toLowerCase() !== 'geral')
+        .sort((a, b) => {
+            const valB = AppState.filteredRecords.filter(r => r.organ === b).reduce((sum, item) => sum + item.val, 0);
+            const valA = AppState.filteredRecords.filter(r => r.organ === a).reduce((sum, item) => sum + item.val, 0);
+            return valB - valA;
+        });
 
     const agenciesSummary = agencies.map((agency) => {
         const items = AppState.filteredRecords.filter(r => r.organ === agency);
@@ -1540,7 +1559,7 @@ function renderGeneralExecutiveTable() {
         tr.innerHTML = `
                     <td class="p-3 font-black text-red-700 min-w-0 break-words" style="overflow-wrap: anywhere; word-break: break-word;">${idx + 1}</td>
                     <td class="p-3 font-bold text-slate-800 min-w-0 break-words" style="overflow-wrap: anywhere; word-break: break-word;">${item.muni}</td>
-                    <td class="p-3 font-semibold text-slate-600 min-w-0 break-words" style="overflow-wrap: anywhere; word-break: break-word;">${item.organ}</td>
+                    <td class="p-3 font-semibold text-slate-600 min-w-0 whitespace-nowrap" style="white-space: nowrap; overflow-wrap: normal;">${item.organ}</td>
                     <td class="p-3 text-slate-700 min-w-0 break-words" style="overflow-wrap: anywhere; word-break: break-word;">${item.desc}</td>
                     <td class="p-3 text-right font-extrabold text-slate-900 min-w-0 whitespace-nowrap" style="white-space: nowrap; overflow-wrap: normal;">${formatBRL(item.val)}</td>
                     <td class="p-3 text-center min-w-0">
@@ -2145,3 +2164,532 @@ function exportMultiTabExcel() {
     const outputName = `planilha_tratada_${new Date().toISOString().slice(0, 10)}.xlsx`;
     XLSX.writeFile(wb, outputName, { cellStyles: true, bookSST: true });
 }
+
+// ADAPTIVE A4 PDF RENDERER (print-based, paginated)
+const PDF_LAYOUT = {
+    pageTitle: 'Relatório Executivo de Investimentos',
+    pageSize: 'A4',
+    cardsPerRow: 3,
+    maxCharsPerChunk: 500
+};
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatDateTimeForReport(date = new Date()) {
+    return new Intl.DateTimeFormat('pt-BR', {
+        dateStyle: 'short',
+        timeStyle: 'short'
+    }).format(date);
+}
+
+function getPdfScopeLabel() {
+    const selectedMunicipio = AppState?.filters?.municipality;
+    if (selectedMunicipio && selectedMunicipio !== 'ALL') {
+        return selectedMunicipio;
+    }
+
+    const selectedTerritorio = AppState?.filters?.territory;
+    if (selectedTerritorio && selectedTerritorio !== 'ALL') {
+        return `Território ${selectedTerritorio}`;
+    }
+
+    return 'Recorte Geral';
+}
+
+function getPdfSourceRecords() {
+    if (Array.isArray(AppState.filteredRecords) && AppState.filteredRecords.length) {
+        return [...AppState.filteredRecords];
+    }
+    return Array.isArray(AppState.normalizedRecords) ? [...AppState.normalizedRecords] : [];
+}
+
+function buildPdfDataset(records) {
+    const sortedRecords = [...records].sort((a, b) => Number(b.val || 0) - Number(a.val || 0));
+    const attended = sortedRecords.filter(item => isAttendedStatus(item.statusStd));
+    const open = sortedRecords.filter(item => isOpenStatus(item.statusStd));
+    const attendedValue = attended.reduce((sum, item) => sum + Number(item.val || 0), 0);
+    const openValue = open.reduce((sum, item) => sum + Number(item.val || 0), 0);
+    const avgTicket = attended.length ? attendedValue / attended.length : 0;
+
+    const uniqueMunicipalities = new Set(sortedRecords.map(item => item.muni).filter(Boolean));
+    const uniqueOrgans = new Set(sortedRecords.map(item => item.organ).filter(Boolean));
+    const uniqueTerritories = new Set(sortedRecords.map(item => item.territorio || 'não consta').filter(Boolean));
+
+    const kpis = [
+        { label: 'Total de Pleitos', value: formatInteger(sortedRecords.length), note: 'Volume total no recorte atual' },
+        { label: 'Atendidos / Publicados', value: formatInteger(attended.length), note: 'Status atendido ou convênio' },
+        { label: 'Em Aberto / Em Estudo', value: formatInteger(open.length), note: 'Demandas pendentes no monitoramento' },
+        {
+            label: 'Taxa de Atendimento',
+            value: `${sortedRecords.length ? ((attended.length / sortedRecords.length) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '0,0'}%`,
+            note: 'Atendidos sobre total de pleitos'
+        },
+        { label: 'Investimento Atendido', value: formatBRL(attendedValue), note: 'Valor total executado/publicado' },
+        { label: 'Passivo em Aberto', value: formatBRL(openValue), note: 'Valor pendente de execução' },
+        { label: 'Ticket Médio Atendido', value: formatBRL(avgTicket), note: 'Média por demanda atendida' },
+        { label: 'Órgãos no Recorte', value: formatInteger(uniqueOrgans.size), note: 'Secretarias e órgãos envolvidos' }
+    ];
+
+    const organCards = [...uniqueOrgans]
+        .map((organName) => {
+            const items = sortedRecords.filter(item => item.organ === organName);
+            const total = items.length;
+            const attendedCount = items.filter(item => isAttendedStatus(item.statusStd)).length;
+            const openCount = items.filter(item => isOpenStatus(item.statusStd)).length;
+            const amount = items.reduce((sum, item) => sum + Number(item.val || 0), 0);
+            const rate = total ? (attendedCount / total) * 100 : 0;
+
+            return {
+                organ: organName || 'Órgão não informado',
+                total,
+                attendedCount,
+                openCount,
+                amount,
+                rate
+            };
+        })
+        .sort((a, b) => b.amount - a.amount);
+
+    return {
+        generatedAt: formatDateTimeForReport(new Date()),
+        scope: getPdfScopeLabel(),
+        total: sortedRecords.length,
+        municipalities: uniqueMunicipalities.size,
+        territories: uniqueTerritories.size,
+        organs: uniqueOrgans.size,
+        kpis,
+        organCards,
+        records: sortedRecords
+    };
+}
+
+function createPdfPageElement(pageIndex, meta) {
+    const page = document.createElement('section');
+    page.className = 'pdf-page';
+    page.dataset.pageIndex = String(pageIndex);
+    page.innerHTML = `
+        <div class="pdf-page-header">
+            <div class="pdf-page-title">${escapeHtml(PDF_LAYOUT.pageTitle)}</div>
+            <div class="pdf-page-subtitle">Escopo: <strong>${escapeHtml(meta.scope)}</strong> • Gerado em: <strong>${escapeHtml(meta.generatedAt)}</strong> • Formato: <strong>${escapeHtml(PDF_LAYOUT.pageSize)}</strong></div>
+        </div>
+        <div class="pdf-page-content"></div>
+        <div class="pdf-page-footer">
+            <span>Plataforma de Inteligência Territorial</span>
+            <span class="pdf-page-number">Página ${pageIndex}</span>
+        </div>
+    `;
+
+    return {
+        page,
+        content: page.querySelector('.pdf-page-content'),
+        pageNumber: page.querySelector('.pdf-page-number')
+    };
+}
+
+function createPdfSectionElement(title, bodyMarkup) {
+    const section = document.createElement('section');
+    section.className = 'pdf-section';
+    section.innerHTML = `
+        <div class="pdf-section-title">${escapeHtml(title)}</div>
+        <div class="pdf-section-body">${bodyMarkup}</div>
+    `;
+    return section;
+}
+
+function hasContentOverflow(contentElement) {
+    return contentElement.scrollHeight > contentElement.clientHeight;
+}
+
+function tryAppendBlock(contentElement, blockElement) {
+    contentElement.appendChild(blockElement);
+    if (hasContentOverflow(contentElement)) {
+        blockElement.remove();
+        return false;
+    }
+    return true;
+}
+
+function chunkCards(cards, size) {
+    const chunks = [];
+    for (let i = 0; i < cards.length; i += size) {
+        chunks.push(cards.slice(i, i + size));
+    }
+    return chunks;
+}
+
+function chunkLongText(text, limit = PDF_LAYOUT.maxCharsPerChunk) {
+    const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) return [''];
+    if (normalized.length <= limit) return [normalized];
+
+    const words = normalized.split(' ');
+    const parts = [];
+    let current = '';
+
+    for (const word of words) {
+        const next = current ? `${current} ${word}` : word;
+        if (next.length > limit && current) {
+            parts.push(current);
+            current = word;
+        } else {
+            current = next;
+        }
+    }
+
+    if (current) parts.push(current);
+    return parts;
+}
+
+function expandRecordForLargeDescription(record) {
+    const descriptionParts = chunkLongText(record.desc, PDF_LAYOUT.maxCharsPerChunk);
+
+    return descriptionParts.map((part, index) => ({
+        ...record,
+        desc: part,
+        continuation: index > 0,
+        continuationLabel: index > 0 ? `continuação (${index + 1})` : ''
+    }));
+}
+
+function buildTableRowHtml(record, position) {
+    const statusLabel = getStatusLabel(record.statusStd);
+    const continuationTag = record.continuation ? ` <em>(${escapeHtml(record.continuationLabel)})</em>` : '';
+
+    return `
+        <tr>
+            <td class="num">${record.continuation ? '' : escapeHtml(position)}</td>
+            <td>${record.continuation ? '' : escapeHtml(record.muni || 'Não Especificado')}</td>
+            <td>${record.continuation ? '' : escapeHtml(record.territorio || 'não consta')}</td>
+            <td>${record.continuation ? '' : escapeHtml(record.organ || 'Geral')}</td>
+            <td>${escapeHtml(record.desc || 'Sem descrição')}${continuationTag}</td>
+            <td class="money">${record.continuation ? '' : escapeHtml(formatBRL(record.val || 0))}</td>
+            <td class="status">${record.continuation ? '' : escapeHtml(statusLabel)}</td>
+        </tr>
+    `;
+}
+
+function createTableSectionSkeleton(title) {
+    return createPdfSectionElement(title, `
+        <div class="pdf-table-wrap">
+            <table class="pdf-table">
+                <colgroup>
+                    <col style="width: 5%">
+                    <col style="width: 13%">
+                    <col style="width: 13%">
+                    <col style="width: 16%">
+                    <col style="width: 25%">
+                    <col style="width: 19%">
+                    <col style="width: 9%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Pos.</th>
+                        <th>Município</th>
+                        <th>Território</th>
+                        <th>Órgão / Secretaria</th>
+                        <th>Descrição / Pleito</th>
+                        <th>Valor (R$)</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    `);
+}
+
+function createMetaSectionMarkup(dataset) {
+    return `
+        <div class="pdf-meta">
+            <div class="pdf-meta-item">
+                <div class="label">Escopo</div>
+                <div class="value">${escapeHtml(dataset.scope)}</div>
+            </div>
+            <div class="pdf-meta-item">
+                <div class="label">Total de Registros</div>
+                <div class="value">${escapeHtml(formatInteger(dataset.total))}</div>
+            </div>
+            <div class="pdf-meta-item">
+                <div class="label">Municípios no Recorte</div>
+                <div class="value">${escapeHtml(formatInteger(dataset.municipalities))}</div>
+            </div>
+            <div class="pdf-meta-item">
+                <div class="label">Territórios no Recorte</div>
+                <div class="value">${escapeHtml(formatInteger(dataset.territories))}</div>
+            </div>
+            <div class="pdf-meta-item">
+                <div class="label">Órgãos Envolvidos</div>
+                <div class="value">${escapeHtml(formatInteger(dataset.organs))}</div>
+            </div>
+            <div class="pdf-meta-item">
+                <div class="label">Geração</div>
+                <div class="value">${escapeHtml(dataset.generatedAt)}</div>
+            </div>
+        </div>
+    `;
+}
+
+function createKpiSection(dataset) {
+    const cards = dataset.kpis.map((item) => `
+        <article class="pdf-kpi-card">
+            <div class="pdf-kpi-label">${escapeHtml(item.label)}</div>
+            <div class="pdf-kpi-value">${escapeHtml(item.value)}</div>
+            <div class="pdf-kpi-note">${escapeHtml(item.note)}</div>
+        </article>
+    `).join('');
+
+    return createPdfSectionElement('Indicadores Gerais', `<div class="pdf-kpi-grid">${cards}</div>`);
+}
+
+function createOrganCardMarkup(card) {
+    return `
+        <article class="pdf-card">
+            <div class="pdf-card-head">${escapeHtml(card.organ)}</div>
+            <div class="pdf-card-body">
+                <div class="pdf-card-row"><span>Total</span><span>${escapeHtml(formatInteger(card.total))}</span></div>
+                <div class="pdf-card-row"><span>Atendidos</span><span>${escapeHtml(formatInteger(card.attendedCount))}</span></div>
+                <div class="pdf-card-row"><span>Em Aberto</span><span>${escapeHtml(formatInteger(card.openCount))}</span></div>
+                <div class="pdf-card-row"><span>Taxa</span><span>${escapeHtml(card.rate.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))}%</span></div>
+                <div class="pdf-card-row"><span>Valor Total</span><span>${escapeHtml(formatBRL(card.amount))}</span></div>
+            </div>
+        </article>
+    `;
+}
+
+function renderAdaptivePrintReport(records) {
+    const root = document.getElementById('print-report-root');
+    if (!root) {
+        throw new Error('Container de impressão não encontrado.');
+    }
+
+    root.style.display = 'block';
+    root.style.position = 'fixed';
+    root.style.left = '-12000px';
+    root.style.top = '0';
+    root.style.width = '210mm';
+    root.style.visibility = 'hidden';
+    root.style.pointerEvents = 'none';
+    root.style.zIndex = '-1';
+    root.innerHTML = '';
+
+    const dataset = buildPdfDataset(records);
+    const report = document.createElement('div');
+    report.className = 'pdf-report';
+    root.appendChild(report);
+
+    const pages = [];
+    let activePage = null;
+    let pageIndex = 0;
+
+    const createNextPage = () => {
+        pageIndex += 1;
+        const nextPage = createPdfPageElement(pageIndex, {
+            scope: dataset.scope,
+            generatedAt: dataset.generatedAt
+        });
+
+        report.appendChild(nextPage.page);
+        pages.push(nextPage);
+        activePage = nextPage;
+    };
+
+    const ensurePage = () => {
+        if (!activePage) createNextPage();
+        return activePage;
+    };
+
+    const appendWholeBlock = (block) => {
+        ensurePage();
+        if (tryAppendBlock(activePage.content, block)) return;
+
+        if (activePage.content.childElementCount === 0) {
+            activePage.content.appendChild(block);
+            return;
+        }
+
+        createNextPage();
+        if (!tryAppendBlock(activePage.content, block)) {
+            activePage.content.appendChild(block);
+        }
+    };
+
+    createNextPage();
+
+    const kpiSection = createKpiSection(dataset);
+    appendWholeBlock(kpiSection);
+
+    const organChunks = chunkCards(dataset.organCards, PDF_LAYOUT.cardsPerRow);
+    let organSection = null;
+    let organGrid = null;
+    let organSectionStarted = false;
+
+    const openOrganSection = (isContinuation = false) => {
+        const title = isContinuation ? 'Indicadores por Secretaria (continuação)' : 'Indicadores por Secretaria';
+        organSection = createPdfSectionElement(title, '<div class="pdf-cards-grid"></div>');
+        organGrid = organSection.querySelector('.pdf-cards-grid');
+        appendWholeBlock(organSection);
+        organSectionStarted = true;
+    };
+
+    if (organChunks.length) {
+        openOrganSection(false);
+
+        for (const rowCards of organChunks) {
+            const rowFragment = document.createDocumentFragment();
+            rowCards.forEach((card) => {
+                const holder = document.createElement('div');
+                holder.innerHTML = createOrganCardMarkup(card);
+                rowFragment.appendChild(holder.firstElementChild);
+            });
+
+            const insertedCards = [];
+            Array.from(rowFragment.childNodes).forEach((cardNode) => {
+                organGrid.appendChild(cardNode);
+                insertedCards.push(cardNode);
+            });
+
+            if (hasContentOverflow(activePage.content)) {
+                insertedCards.forEach((node) => node.remove());
+
+                if (!organSectionStarted || organGrid.children.length === 0) {
+                    createNextPage();
+                } else {
+                    createNextPage();
+                }
+
+                openOrganSection(true);
+
+                rowCards.forEach((card) => {
+                    const holder = document.createElement('div');
+                    holder.innerHTML = createOrganCardMarkup(card);
+                    organGrid.appendChild(holder.firstElementChild);
+                });
+            }
+        }
+    }
+
+    let tableSection = null;
+    let tableBody = null;
+    let isTableContinuation = false;
+
+    const openTableSection = () => {
+        const sectionTitle = isTableContinuation ? 'Tabela Geral (continuação)' : 'Tabela Geral do Relatório';
+        tableSection = createTableSectionSkeleton(sectionTitle);
+        tableBody = tableSection.querySelector('tbody');
+        appendWholeBlock(tableSection);
+        isTableContinuation = true;
+    };
+
+    openTableSection();
+
+    const expandedRows = [];
+    dataset.records.forEach((record) => {
+        expandedRows.push(...expandRecordForLargeDescription(record));
+    });
+
+    let absolutePosition = 0;
+
+    for (const record of expandedRows) {
+        if (!record.continuation) {
+            absolutePosition += 1;
+        }
+
+        const rowHolder = document.createElement('tbody');
+        rowHolder.innerHTML = buildTableRowHtml(record, absolutePosition);
+        const rowElement = rowHolder.firstElementChild;
+        tableBody.appendChild(rowElement);
+
+        if (hasContentOverflow(activePage.content)) {
+            rowElement.remove();
+            createNextPage();
+            openTableSection();
+            tableBody.appendChild(rowElement);
+
+            if (hasContentOverflow(activePage.content)) {
+                rowElement.remove();
+                const forcedParts = expandRecordForLargeDescription({
+                    ...record,
+                    desc: record.desc,
+                    continuation: false,
+                    continuationLabel: ''
+                });
+
+                for (let idx = 0; idx < forcedParts.length; idx++) {
+                    const forced = {
+                        ...forcedParts[idx],
+                        continuation: idx > 0,
+                        continuationLabel: idx > 0 ? `continuação (${idx + 1})` : ''
+                    };
+                    const forceHolder = document.createElement('tbody');
+                    forceHolder.innerHTML = buildTableRowHtml(forced, absolutePosition);
+                    const forceRow = forceHolder.firstElementChild;
+                    tableBody.appendChild(forceRow);
+
+                    if (hasContentOverflow(activePage.content)) {
+                        forceRow.remove();
+                        createNextPage();
+                        openTableSection();
+                        tableBody.appendChild(forceRow);
+                    }
+                }
+            }
+        }
+    }
+
+    const totalPages = pages.length;
+    pages.forEach((entry, index) => {
+        entry.pageNumber.textContent = `Página ${index + 1} de ${totalPages}`;
+    });
+}
+
+function clearAdaptivePrintReport() {
+    document.body.classList.remove('is-printing-pdf');
+    const root = document.getElementById('print-report-root');
+    if (root) {
+        root.innerHTML = '';
+        root.removeAttribute('style');
+    }
+}
+
+function generateExecutivePdf() {
+    const records = getPdfSourceRecords();
+
+    if (!records.length) {
+        alert('Não há dados disponíveis para gerar o PDF.');
+        return;
+    }
+
+    try {
+        document.body.classList.add('is-printing-pdf');
+        renderAdaptivePrintReport(records);
+        const root = document.getElementById('print-report-root');
+
+        if (root) {
+            root.style.position = 'static';
+            root.style.left = 'auto';
+            root.style.top = 'auto';
+            root.style.width = 'auto';
+            root.style.visibility = 'visible';
+            root.style.pointerEvents = 'auto';
+            root.style.zIndex = 'auto';
+        }
+
+        setTimeout(() => {
+            window.print();
+        }, 80);
+    } catch (error) {
+        clearAdaptivePrintReport();
+        console.error(error);
+        alert(`Erro ao gerar o relatório PDF: ${error?.message || error}`);
+    }
+}
+
+window.addEventListener('afterprint', clearAdaptivePrintReport);
+window.generateExecutivePdf = generateExecutivePdf;
