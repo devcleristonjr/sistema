@@ -8,10 +8,38 @@ function getSelfOrigin(req) {
   return `${req.protocol}://${req.get('host')}`;
 }
 
+function normalizeOrigin(origin) {
+  if (!origin) return '';
+
+  try {
+    const parsed = new URL(String(origin));
+    return `${parsed.protocol}//${parsed.host}`.toLowerCase();
+  } catch {
+    let normalized = String(origin).trim().toLowerCase();
+    while (normalized.endsWith('/')) {
+      normalized = normalized.slice(0, -1);
+    }
+    return normalized;
+  }
+}
+
+function isSameHostAsRequest(origin, req) {
+  try {
+    const parsedOrigin = new URL(String(origin));
+    const requestHost = String(req.get('host') || '').trim().toLowerCase();
+    return Boolean(requestHost) && parsedOrigin.host.toLowerCase() === requestHost;
+  } catch {
+    return false;
+  }
+}
+
 function isAllowedOrigin(origin, req, config) {
   if (!origin) return true;
-  const allowed = new Set([getSelfOrigin(req), ...config.allowedOrigins]);
-  return allowed.has(origin);
+
+  const normalizedOrigin = normalizeOrigin(origin);
+  const allowed = new Set([normalizeOrigin(getSelfOrigin(req)), ...config.allowedOrigins.map(normalizeOrigin)]);
+
+  return allowed.has(normalizedOrigin) || isSameHostAsRequest(origin, req);
 }
 
 export function requireAccessToken(config) {

@@ -30,6 +30,7 @@ const store = createDatasetStore({ ttlMs: config.sessionTtlMs });
 const staticRoot = config.isProduction ? path.join(__dirname, 'build') : __dirname;
 
 app.disable('x-powered-by');
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.use(createSecurityMiddleware(config));
