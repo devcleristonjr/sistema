@@ -57,6 +57,25 @@ const mappingSchema = z.object({
   status: z.string().optional().default('')
 });
 
+const excludedRecordIdsSchema = z.array(z.coerce.number().int().positive()).default([]);
+const includedRecordIdsSchema = z.array(z.coerce.number().int().positive()).default([]);
+
+function parseExcludedRecordIdsFromRequest(reqBody) {
+  return excludedRecordIdsSchema.parse(
+    reqBody?.excludedRecordIds
+      ?? reqBody?.filters?.excludedRecordIds
+      ?? []
+  );
+}
+
+function parseIncludedRecordIdsFromRequest(reqBody) {
+  return includedRecordIdsSchema.parse(
+    reqBody?.includedRecordIds
+      ?? reqBody?.filters?.includedRecordIds
+      ?? []
+  );
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', environment: config.environment });
 });
@@ -111,6 +130,7 @@ app.post('/api/datasets/:datasetId/mapping', requireAccessToken(config), async (
     store.set(req.params.datasetId, {
       ...dataset,
       ...normalized,
+      excludedRecordIds: [],
       columnMappings: mappings,
       updatedAt: Date.now()
     });
@@ -139,9 +159,16 @@ app.post('/api/datasets/:datasetId/query', requireAccessToken(config), async (re
       currentPage: req.body?.currentPage,
       pageSize: req.body?.pageSize
     });
+    const excludedRecordIds = parseExcludedRecordIdsFromRequest(req.body);
+    const effectiveExcludedRecordIds = excludedRecordIds.length ? excludedRecordIds : (dataset.excludedRecordIds || []);
+    const updatedDataset = store.set(req.params.datasetId, {
+      ...dataset,
+      excludedRecordIds: effectiveExcludedRecordIds
+    });
 
-    res.json(buildSnapshot(dataset, {
+    res.json(buildSnapshot(updatedDataset, {
       filters,
+      excludedRecordIds: effectiveExcludedRecordIds,
       currentPage: paging.currentPage,
       pageSize: paging.pageSize
     }));
@@ -160,7 +187,9 @@ app.post('/api/datasets/:datasetId/exports/excel', requireAccessToken(config), a
     }
 
     const filters = filterSchema.parse(req.body?.filters ?? {});
-    const workbook = buildWorkbookFromDataset(dataset, filters);
+    const excludedRecordIds = parseExcludedRecordIdsFromRequest(req.body);
+    const effectiveExcludedRecordIds = excludedRecordIds.length ? excludedRecordIds : (dataset.excludedRecordIds || []);
+    const workbook = buildWorkbookFromDataset(dataset, filters, effectiveExcludedRecordIds);
     const buffer = Buffer.from(workbook, 'binary');
     const outputName = `planilha_tratada_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
@@ -182,9 +211,14 @@ app.post('/api/datasets/:datasetId/exports/word', requireAccessToken(config), as
     }
 
     const filters = filterSchema.parse(req.body?.filters ?? {});
+    const excludedRecordIds = parseExcludedRecordIdsFromRequest(req.body);
+    const effectiveExcludedRecordIds = excludedRecordIds.length ? excludedRecordIds : (dataset.excludedRecordIds || []);
+    const includedRecordIds = parseIncludedRecordIdsFromRequest(req.body);
     const report = await buildWordReport({
       dataset,
       filters,
+      excludedRecordIds: effectiveExcludedRecordIds,
+      includedRecordIds,
       templatePath: path.join(__dirname, 'TIMBRADO_JERO_template.docx')
     });
 

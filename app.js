@@ -9,6 +9,7 @@ const AppState = {
     filteredRecords: [],
     pageRecords: [],
     detectedDuplicates: [],
+    duplicateExcludedRecordIds: [],
     qualityScore: 0,
     fieldStats: {},
     whatsappSummaryText: '',
@@ -133,6 +134,194 @@ function formatInteger(value) {
 
 function formatDateTimeForReport(date = new Date()) {
     return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+}
+
+function formatWhatsAppShortCurrency(value) {
+    const amount = Number(value || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return 'R$ 0,00';
+    if (amount >= 1000000) {
+        return `R$ ${(amount / 1000000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi`;
+    }
+    if (amount >= 1000) {
+        return `R$ ${(amount / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mil`;
+    }
+    return formatBRL(amount);
+}
+
+function shortenWhatsAppDescription(description, maxLength = 240) {
+    const text = normalizeText(description, 'Sem Descricao').replace(/\s+/g, ' ').trim();
+    return text.length <= maxLength ? text : `${text.slice(0, maxLength - 3).trim()}...`;
+}
+
+function getWhatsAppAreaTitle(area) {
+    const text = normalizeText(area, 'Infraestrutura e Geral').toLowerCase();
+    if (text.includes('infraestrutura') || text.includes('mobilidade') || text.includes('rodovia')) return 'INFRAESTRUTURA E RODOVIAS';
+    if (text.includes('educacao') || text.includes('educação')) return 'EDUCACAO';
+    if (text.includes('saneamento') || text.includes('agua') || text.includes('água') || text.includes('drenagem')) return 'AGUA E SANEAMENTO';
+    if (text.includes('esporte')) return 'ESPORTE E LAZER';
+    if (text.includes('saude') || text.includes('saúde')) return 'SAUDE';
+    if (text.includes('seguranca') || text.includes('segurança')) return 'SEGURANCA PUBLICA';
+    if (text.includes('rural') || text.includes('desenvolvimento')) return 'DESENVOLVIMENTO RURAL';
+    if (text.includes('habitacao') || text.includes('habitação') || text.includes('urbanizacao') || text.includes('urbanização')) return 'HABITACAO E URBANIZACAO';
+    return 'OUTRAS AREAS';
+}
+
+function compareWhatsAppRecords(left, right) {
+    return Number(right?.val || 0) - Number(left?.val || 0);
+}
+
+function buildDisplayedHighlights(records) {
+    const attended = records.filter((record) => isAttendedStatus(record.statusStd));
+    if (!attended.length) return [];
+
+    const byOrgan = new Map();
+    attended.forEach((record) => {
+        const organ = normalizeText(record.organ, 'Orgao nao informado');
+        if (!byOrgan.has(organ)) byOrgan.set(organ, []);
+        byOrgan.get(organ).push(record);
+    });
+
+    byOrgan.forEach((items, key) => {
+        byOrgan.set(key, [...items].sort(compareWhatsAppRecords));
+    });
+
+    const representatives = [];
+    const remaining = [];
+
+    [...byOrgan.values()]
+        .sort((left, right) => compareWhatsAppRecords(left[0], right[0]))
+        .forEach((items) => {
+            if (!items.length) return;
+            representatives.push(items[0]);
+            if (items.length > 1) remaining.push(...items.slice(1));
+        });
+
+    const baseCount = 8;
+    const extraCount = 6;
+    const hardCap = 30;
+    const maxCount = Math.max(representatives.length, Math.min(hardCap, Math.max(baseCount, representatives.length) + extraCount));
+    const selected = [...representatives];
+    const selectedIds = new Set(selected.map((record) => Number(record.id)));
+
+    [...remaining]
+        .sort(compareWhatsAppRecords)
+        .forEach((record) => {
+            if (selected.length >= maxCount) return;
+            const id = Number(record.id);
+            if (selectedIds.has(id)) return;
+            selected.push(record);
+            selectedIds.add(id);
+        });
+
+    return selected.sort(compareWhatsAppRecords);
+}
+
+function getWhatsAppScopeLabel(records, filters) {
+    if (filters.municipality !== 'ALL') return filters.municipality.toUpperCase();
+    if (filters.territory !== 'ALL') return `TERRITORIO ${filters.territory}`.toUpperCase();
+
+    const municipalities = [...new Set(records.map((record) => record.muni).filter(Boolean))];
+    const territories = [...new Set(records.map((record) => record.territorio).filter(Boolean))];
+    if (municipalities.length === 1) return municipalities[0].toUpperCase();
+    if (territories.length === 1) return `TERRITORIO ${territories[0]}`.toUpperCase();
+    return 'BAHIA';
+}
+
+function buildWhatsAppSummaryFromDisplayedData(records, filters) {
+    if (!records.length) {
+        return '*RESUMO DE INVESTIMENTOS E ACOES*\n\nNenhum registro encontrado para o recorte atual.';
+    }
+
+    const attendedRecords = records.filter((record) => isAttendedStatus(record.statusStd));
+    const openRecords = records.filter((record) => isOpenStatus(record.statusStd));
+    const licensingRecords = records.filter((record) => String(record.statusStd || '').toUpperCase() === 'LICITACAO');
+    const cancelledRecords = records.filter((record) => String(record.statusStd || '').toUpperCase() === 'CANCELADO');
+    const attendedValue = attendedRecords.reduce((sum, record) => sum + Number(record.val || 0), 0);
+    const licensingValue = licensingRecords.reduce((sum, record) => sum + Number(record.val || 0), 0);
+    const highlights = buildDisplayedHighlights(records);
+    const groupedAreas = {};
+
+    highlights.forEach((record) => {
+        const area = getWhatsAppAreaTitle(record.area);
+        groupedAreas[area] = groupedAreas[area] || [];
+        groupedAreas[area].push(record);
+    });
+
+    const areaEntries = Object.entries(groupedAreas).sort((left, right) => {
+        const totalLeft = left[1].reduce((sum, record) => sum + Number(record.val || 0), 0);
+        const totalRight = right[1].reduce((sum, record) => sum + Number(record.val || 0), 0);
+        return totalRight - totalLeft;
+    });
+
+    const lines = [
+        `*RESUMO DE INVESTIMENTOS E ACOES - ${getWhatsAppScopeLabel(records, filters)}*`,
+        '',
+        '*PANORAMA GERAL*',
+        '━━━━━━━━━━━━━━━━━━',
+        `• Total de pleitos: *${records.length}*`,
+        `• Atendidos / Publicados: *${attendedRecords.length}*`,
+        `• Em aberto: *${openRecords.length}*`,
+        `• Investimentos atendidos/publicados: *${formatWhatsAppShortCurrency(attendedValue)}*`,
+        `• Aproximadamente *${formatBRL(attendedValue)}*`
+    ];
+
+    if (cancelledRecords.length > 0) {
+        lines.push(`• Cancelados: *${cancelledRecords.length}*`);
+    }
+
+    if (highlights.length > 0) {
+        lines.push('', '━━━━━━━━━━━━━━━━━━', '*DESTAQUES - MAIORES INVESTIMENTOS*', '━━━━━━━━━━━━━━━━━━');
+        areaEntries.forEach(([area, items]) => {
+            lines.push('', `*${area}*`);
+            items.forEach((record) => {
+                const value = Number(record.val || 0);
+                const organ = normalizeText(record.organ, 'Orgao nao informado');
+                lines.push('', `*${value > 0 ? formatWhatsAppShortCurrency(value) : 'VALOR NAO INFORMADO'}*`);
+                lines.push(`• ${shortenWhatsAppDescription(record.desc)}`);
+                lines.push(`• Secretaria: *${organ}*`);
+            });
+        });
+    }
+
+    if (licensingRecords.length > 0) {
+        lines.push('', '━━━━━━━━━━━━━━━━━━', '*EM LICITACAO*', '━━━━━━━━━━━━━━━━━━');
+        licensingRecords
+            .slice()
+            .sort(compareWhatsAppRecords)
+            .slice(0, 10)
+            .forEach((record) => {
+                const value = Number(record.val || 0);
+                const organ = normalizeText(record.organ, 'Orgao nao informado');
+                lines.push('');
+                lines.push(value > 0 ? `*${formatWhatsAppShortCurrency(value)}*` : '*Valor nao informado*');
+                lines.push(`• ${shortenWhatsAppDescription(record.desc)}`);
+                lines.push(`• Secretaria: *${organ}*`);
+            });
+    }
+
+    if (openRecords.length > 0) {
+        lines.push('', '━━━━━━━━━━━━━━━━━━', '*PLEITOS EM ABERTO*', '━━━━━━━━━━━━━━━━━━');
+        openRecords
+            .slice()
+            .sort(compareWhatsAppRecords)
+            .slice(0, 15)
+            .forEach((record) => {
+                const organ = normalizeText(record.organ, 'Orgao nao informado');
+                lines.push('');
+                lines.push(`• Secretaria: *${organ}*`);
+                lines.push(`• ${shortenWhatsAppDescription(record.desc, 300)}`);
+            });
+    }
+
+    lines.push('', '━━━━━━━━━━━━━━━━━━', '*RESUMO*');
+    lines.push(`• *${attendedRecords.length}* pleitos atendidos/publicados`);
+    lines.push(`• *${openRecords.length}* pleitos em aberto`);
+    lines.push(`• *${formatWhatsAppShortCurrency(attendedValue)}* em investimentos atendidos/publicados`);
+    if (licensingRecords.length > 0) {
+        lines.push(`• *${formatWhatsAppShortCurrency(licensingValue)}* em obras em licitacao`);
+    }
+
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function escapeHtml(value) {
@@ -348,6 +537,7 @@ function renderActivePills() {
 }
 
 function applySnapshot(snapshot) {
+    const previousDatasetId = AppState.datasetId;
     AppState.datasetId = snapshot.datasetId || AppState.datasetId;
     AppState.datasetLabel = snapshot.datasetLabel || AppState.datasetLabel;
     AppState.importedSheetName = snapshot.importedSheetName || AppState.importedSheetName;
@@ -362,6 +552,11 @@ function applySnapshot(snapshot) {
     AppState.currentPage = snapshot.currentPage || 1;
     AppState.pageSize = snapshot.pageSize || AppState.pageSize;
     AppState.whatsappSummaryText = snapshot.whatsappSummaryText || '';
+    if (snapshot.datasetId && snapshot.datasetId !== previousDatasetId) {
+        AppState.duplicateExcludedRecordIds = [];
+    }
+
+    applyLocalAnalystExclusions();
 
     populateFilterOptions();
     renderActivePills();
@@ -370,6 +565,26 @@ function applySnapshot(snapshot) {
         renderAnalystModeViews();
     }
     saveDashboardState();
+}
+
+function applyLocalAnalystExclusions() {
+    if (!AppState.duplicateExcludedRecordIds.length) return;
+
+    const excludedIds = new Set(AppState.duplicateExcludedRecordIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+    if (!excludedIds.size) return;
+
+    AppState.filteredRecords = AppState.filteredRecords.filter((record) => !excludedIds.has(Number(record.id)));
+    const maxPage = Math.ceil(AppState.filteredRecords.length / AppState.pageSize) || 1;
+    AppState.currentPage = Math.min(Math.max(1, AppState.currentPage), maxPage);
+    const pageStart = (AppState.currentPage - 1) * AppState.pageSize;
+    AppState.pageRecords = AppState.filteredRecords.slice(pageStart, pageStart + AppState.pageSize);
+    AppState.detectedDuplicates = AppState.detectedDuplicates.filter((pair) => {
+        const leftId = Number(pair.item1?.id);
+        const rightId = Number(pair.item2?.id);
+        if (!Number.isFinite(leftId) || !Number.isFinite(rightId)) return false;
+        if (excludedIds.has(leftId) || excludedIds.has(rightId)) return false;
+        return true;
+    });
 }
 
 async function refreshDatasetView(showSpinner = false) {
@@ -383,11 +598,16 @@ async function refreshDatasetView(showSpinner = false) {
             method: 'POST',
             body: JSON.stringify({
                 filters: AppState.filters,
+                excludedRecordIds: AppState.duplicateExcludedRecordIds,
                 currentPage: AppState.currentPage,
                 pageSize: AppState.pageSize
             })
         });
         applySnapshot(snapshot);
+        return true;
+    } catch (error) {
+        alert(error?.message || 'Não foi possível atualizar o recorte após aplicar a decisão de duplicidade.');
+        return false;
     } finally {
         if (showSpinner) hideLoadingStatus();
     }
@@ -596,6 +816,7 @@ async function confirmColumnMapping() {
 
     try {
         AppState.filters = { municipality: 'ALL', territory: 'ALL', organ: 'ALL', status: 'ALL', search: '' };
+        AppState.duplicateExcludedRecordIds = [];
         AppState.currentPage = 1;
         const snapshot = await apiJson(`/api/datasets/${AppState.datasetId}/mapping`, {
             method: 'POST',
@@ -897,20 +1118,41 @@ function renderFieldQualityGrid() {
     });
 }
 
+function getVisibleDuplicates() {
+    if (!AppState.detectedDuplicates.length || !AppState.filteredRecords.length) return [];
+
+    const visibleIds = new Set(AppState.filteredRecords.map((record) => Number(record.id)).filter((id) => Number.isFinite(id)));
+    const excludedIds = new Set(AppState.duplicateExcludedRecordIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+
+    return AppState.detectedDuplicates
+        .map((pair, index) => ({ ...pair, _sourceIndex: index }))
+        .filter((pair) => {
+            const leftId = Number(pair.item1?.id);
+            const rightId = Number(pair.item2?.id);
+            if (!visibleIds.has(leftId) || !visibleIds.has(rightId)) return false;
+            if (excludedIds.has(leftId) || excludedIds.has(rightId)) return false;
+            return true;
+        });
+}
+
 function renderDuplicatesList() {
     const container = document.getElementById('duplicates-container');
     if (!container) return;
     container.innerHTML = '';
 
-    const badge = document.getElementById('duplicates-count-badge');
-    if (badge) badge.textContent = `${AppState.detectedDuplicates.length} Duplicidades Suspeitas`;
+    const visibleDuplicates = getVisibleDuplicates();
 
-    if (!AppState.detectedDuplicates.length) {
-        container.innerHTML = '<div class="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500">Nenhuma duplicidade crítica detectada nesta base.</div>';
+    const badge = document.getElementById('duplicates-count-badge');
+    if (badge) badge.textContent = `${visibleDuplicates.length} Duplicidades Suspeitas`;
+
+    if (!visibleDuplicates.length) {
+        container.innerHTML = '<div class="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500">Nenhuma duplicidade crítica detectada no recorte filtrado atual.</div>';
         return;
     }
 
-    AppState.detectedDuplicates.forEach((pair, index) => {
+    visibleDuplicates.forEach((pair) => {
+        const item1Id = Number(pair.item1?.id);
+        const item2Id = Number(pair.item2?.id);
         const block = document.createElement('div');
         block.className = 'bg-amber-50/60 p-3 rounded-xl border border-amber-200 text-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3';
         block.innerHTML = `
@@ -919,11 +1161,46 @@ function renderDuplicatesList() {
                 <div class="text-slate-700"><strong>Reg #1:</strong> ${escapeHtml(pair.item1.muni)} (${escapeHtml(pair.item1.organ)}) - ${escapeHtml(pair.item1.desc)}</div>
                 <div class="text-slate-700"><strong>Reg #2:</strong> ${escapeHtml(pair.item2.muni)} (${escapeHtml(pair.item2.organ)}) - ${escapeHtml(pair.item2.desc)}</div>
             </div>
-            <div class="flex items-center gap-2"><button type="button" class="duplicate-ignore-button px-2.5 py-1 bg-white border border-slate-300 rounded font-bold hover:bg-slate-100">Manter Ambos</button></div>
+            <div class="flex items-center gap-2 flex-wrap">
+                <button type="button" class="duplicate-keep-first-button px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded font-bold hover:bg-emerald-100">Manter Reg #1</button>
+                <button type="button" class="duplicate-keep-second-button px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded font-bold hover:bg-blue-100">Manter Reg #2</button>
+                <button type="button" class="duplicate-ignore-button px-2.5 py-1 bg-white border border-slate-300 rounded font-bold hover:bg-slate-100">Manter Ambos</button>
+            </div>
         `;
-        block.querySelector('.duplicate-ignore-button')?.addEventListener('click', () => ignoreDuplicate(index));
+        block.querySelector('.duplicate-keep-first-button')?.addEventListener('click', () => resolveDuplicate(item1Id, item2Id));
+        block.querySelector('.duplicate-keep-second-button')?.addEventListener('click', () => resolveDuplicate(item2Id, item1Id));
+        block.querySelector('.duplicate-ignore-button')?.addEventListener('click', () => ignoreDuplicate(pair._sourceIndex));
         container.appendChild(block);
     });
+}
+
+async function resolveDuplicate(keepRecordId, discardRecordId) {
+    if (!Number.isFinite(discardRecordId)) return;
+
+    const keepId = Number(keepRecordId);
+    const discardId = Number(discardRecordId);
+    if (!Number.isFinite(keepId) || !Number.isFinite(discardId) || keepId === discardId) return;
+    const nextExcluded = new Set(AppState.duplicateExcludedRecordIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+    nextExcluded.add(discardId);
+    AppState.duplicateExcludedRecordIds = [...nextExcluded];
+
+    AppState.detectedDuplicates = AppState.detectedDuplicates.filter((pair) => {
+        const leftId = Number(pair.item1?.id);
+        const rightId = Number(pair.item2?.id);
+        if (!Number.isFinite(leftId) || !Number.isFinite(rightId)) return false;
+        if (leftId === discardId || rightId === discardId) return false;
+        return true;
+    });
+
+    // Apply exclusion immediately in UI so executive/analyst views reflect the decision before roundtrip.
+    AppState.filteredRecords = AppState.filteredRecords.filter((record) => Number(record.id) !== discardId);
+    AppState.pageRecords = AppState.pageRecords.filter((record) => Number(record.id) !== discardId);
+    const maxPage = Math.ceil(AppState.filteredRecords.length / AppState.pageSize) || 1;
+    AppState.currentPage = Math.min(AppState.currentPage, maxPage);
+    renderExecutiveModeViews();
+    renderAnalystModeViews();
+
+    await refreshDatasetView(true);
 }
 
 function ignoreDuplicate(index) {
@@ -1008,7 +1285,7 @@ function openSummaryModal() {
     const modal = document.getElementById('summary-modal');
     const textarea = document.getElementById('summary-copy-text');
     if (!modal || !textarea) return;
-    textarea.value = AppState.whatsappSummaryText || '*RESUMO DE INVESTIMENTOS E AÇÕES*\n\nNenhum registro encontrado para o recorte atual.';
+    textarea.value = buildWhatsAppSummaryFromDisplayedData(AppState.filteredRecords, AppState.filters);
     modal.classList.remove('hidden');
     setTimeout(() => textarea.focus(), 50);
 }
@@ -1047,11 +1324,14 @@ async function copySummaryText() {
     }
 }
 
-function generateWhatsAppSummary() {
+async function generateWhatsAppSummary() {
     if (!AppState.datasetId) {
         alert('Importe uma planilha antes de gerar o resumo.');
         return;
     }
+
+    const refreshed = await refreshDatasetView(true);
+    if (!refreshed) return;
     openSummaryModal();
 }
 
@@ -1062,7 +1342,10 @@ async function exportMultiTabExcel() {
     }
 
     try {
-        await apiDownload(`/api/datasets/${AppState.datasetId}/exports/excel`, { filters: AppState.filters });
+        await apiDownload(`/api/datasets/${AppState.datasetId}/exports/excel`, {
+            filters: AppState.filters,
+            excludedRecordIds: AppState.duplicateExcludedRecordIds
+        });
     } catch (error) {
         alert(error.message || 'Erro ao gerar a planilha tratada.');
     }
@@ -1082,7 +1365,18 @@ async function generateWordReport() {
             button.disabled = true;
             button.innerHTML = '⏳ Gerando Word...';
         }
-        await apiDownload(`/api/datasets/${AppState.datasetId}/exports/word`, { filters: AppState.filters });
+
+        const refreshed = await refreshDatasetView(true);
+        if (!refreshed) return;
+        const includedRecordIds = AppState.filteredRecords
+            .map((record) => Number(record.id))
+            .filter((id) => Number.isFinite(id));
+
+        await apiDownload(`/api/datasets/${AppState.datasetId}/exports/word`, {
+            filters: AppState.filters,
+            excludedRecordIds: AppState.duplicateExcludedRecordIds,
+            includedRecordIds
+        });
     } catch (error) {
         alert(error.message || 'Erro ao gerar o relatório Word.');
     } finally {
@@ -1100,8 +1394,7 @@ function getPdfScopeLabel() {
 }
 
 function getPdfSourceRecords() {
-    if (AppState.filteredRecords.length) return [...AppState.filteredRecords];
-    return [...AppState.normalizedRecords];
+    return [...AppState.filteredRecords];
 }
 
 function buildPdfDataset(records) {

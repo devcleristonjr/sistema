@@ -83,6 +83,36 @@ const DEFAULT_FILTERS = {
   search: ''
 };
 
+function sanitizeExcludedRecordIds(values) {
+  if (!Array.isArray(values) || !values.length) return new Set();
+  return new Set(
+    values
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0)
+  );
+}
+
+function applyExcludedRecords(records, excludedRecordIds) {
+  const excluded = sanitizeExcludedRecordIds(excludedRecordIds);
+  if (!excluded.size) return records;
+  return records.filter((record) => !excluded.has(Number(record.id)));
+}
+
+function sanitizeIncludedRecordIds(values) {
+  if (!Array.isArray(values) || !values.length) return new Set();
+  return new Set(
+    values
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0)
+  );
+}
+
+function applyIncludedRecords(records, includedRecordIds) {
+  const included = sanitizeIncludedRecordIds(includedRecordIds);
+  if (!included.size) return records;
+  return records.filter((record) => included.has(Number(record.id)));
+}
+
 function normalizeText(value, fallback = '') {
   if (value === null || value === undefined) return fallback;
   return String(value).trim();
@@ -492,6 +522,92 @@ function getWhatsAppAreaTitle(area) {
   return 'OUTRAS ÁREAS';
 }
 
+function compareInvestmentRecords(left, right) {
+  const leftValue = Number(left?.val || 0);
+  const rightValue = Number(right?.val || 0);
+  const leftHasValue = leftValue > 0;
+  const rightHasValue = rightValue > 0;
+
+  if (leftHasValue && rightHasValue) {
+    if (rightValue !== leftValue) return rightValue - leftValue;
+  } else if (leftHasValue !== rightHasValue) {
+    return leftHasValue ? -1 : 1;
+  }
+
+  const leftArea = getWhatsAppAreaTitle(left?.area);
+  const rightArea = getWhatsAppAreaTitle(right?.area);
+  if (leftArea !== rightArea) return leftArea.localeCompare(rightArea, 'pt-BR');
+
+  const leftOrgan = normalizeText(left?.organ, 'Órgão não informado');
+  const rightOrgan = normalizeText(right?.organ, 'Órgão não informado');
+  if (leftOrgan !== rightOrgan) return leftOrgan.localeCompare(rightOrgan, 'pt-BR');
+
+  return normalizeText(left?.desc, '').localeCompare(normalizeText(right?.desc, ''), 'pt-BR');
+}
+
+function buildAttendedInvestmentHighlights(records, options = {}) {
+  const attendedRecords = records.filter((record) => isAttendedStatus(record.statusStd));
+  if (!attendedRecords.length) {
+    return {
+      highlights: [],
+      representedOrgans: 0,
+      capacity: 0
+    };
+  }
+
+  const baseCount = Number.isInteger(options.baseCount) ? options.baseCount : 8;
+  const extraCount = Number.isInteger(options.extraCount) ? options.extraCount : 6;
+  const hardCap = Number.isInteger(options.hardCap) ? options.hardCap : 30;
+
+  const recordsByOrgan = new Map();
+  attendedRecords.forEach((record) => {
+    const organ = normalizeText(record.organ, 'Órgão não informado');
+    if (!recordsByOrgan.has(organ)) recordsByOrgan.set(organ, []);
+    recordsByOrgan.get(organ).push(record);
+  });
+
+  recordsByOrgan.forEach((items, organ) => {
+    recordsByOrgan.set(organ, items.toSorted(compareInvestmentRecords));
+  });
+
+  const representatives = [];
+  const remaining = [];
+  const organEntries = [...recordsByOrgan.entries()].toSorted((left, right) => {
+    const leftTop = left[1][0] || {};
+    const rightTop = right[1][0] || {};
+    return compareInvestmentRecords(leftTop, rightTop);
+  });
+
+  organEntries.forEach(([, items]) => {
+    if (!items.length) return;
+    representatives.push(items[0]);
+    if (items.length > 1) remaining.push(...items.slice(1));
+  });
+
+  const representedOrgans = representatives.length;
+  const minimumTarget = Math.max(baseCount, representedOrgans);
+  const maximumTarget = Math.max(representedOrgans, Math.min(hardCap, minimumTarget + extraCount));
+
+  const selected = [...representatives];
+  const selectedRecordIds = new Set(selected.map((record) => record.id));
+
+  remaining
+    .toSorted(compareInvestmentRecords)
+    .forEach((record) => {
+      if (selected.length >= maximumTarget) return;
+      if (selectedRecordIds.has(record.id)) return;
+      selected.push(record);
+      selectedRecordIds.add(record.id);
+    });
+
+  const highlights = selected.toSorted(compareInvestmentRecords);
+  return {
+    highlights,
+    representedOrgans,
+    capacity: maximumTarget
+  };
+}
+
 function buildWhatsAppExecutiveSummary(records, filters) {
   if (!records.length) {
     return '*RESUMO DE INVESTIMENTOS E AÇÕES*\n\nNenhum registro encontrado para o recorte atual.';
@@ -533,11 +649,14 @@ function buildWhatsAppExecutiveSummary(records, filters) {
     lines.push(`• Cancelados: *${cancelledRecords.length}*`);
   }
 
-  const attendedWithValue = attendedRecords.filter((record) => Number(record.val || 0) > 0).toSorted((left, right) => Number(right.val || 0) - Number(left.val || 0));
-  const attendedWithoutValue = attendedRecords.filter((record) => Number(record.val || 0) <= 0);
+  const { highlights: investmentHighlights } = buildAttendedInvestmentHighlights(records, {
+    baseCount: 8,
+    extraCount: 6,
+    hardCap: 30
+  });
   const groupedAreas = {};
 
-  attendedWithValue.forEach((record) => {
+  investmentHighlights.forEach((record) => {
     const area = getWhatsAppAreaTitle(record.area);
     groupedAreas[area] = groupedAreas[area] || [];
     groupedAreas[area].push(record);
@@ -549,34 +668,23 @@ function buildWhatsAppExecutiveSummary(records, filters) {
     return totalB - totalA;
   });
 
-  if (attendedWithValue.length > 0 || attendedWithoutValue.length > 0) {
+  if (investmentHighlights.length > 0) {
     lines.push('', '━━━━━━━━━━━━━━━━━━', '*DESTAQUES – MAIORES INVESTIMENTOS*', '━━━━━━━━━━━━━━━━━━');
 
     areaEntries.forEach(([area, areaRecords]) => {
       if (!areaRecords.length) return;
 
       lines.push('', `*${area}*`);
-      const organs = [...new Set(areaRecords.map((record) => normalizeText(record.organ, '')).filter(Boolean))];
-      if (organs.length > 0) {
-        lines.push(`Secretaria: *${organs.join(' / ')}*`);
-      }
 
-      areaRecords.slice(0, 5).forEach((record) => {
+      areaRecords.forEach((record) => {
         const value = Number(record.val || 0);
-        lines.push('', `*${formatWhatsAppShortCurrency(value)}*`, `• ${shortenWhatsAppDescription(record.desc)}`);
+        lines.push('', `*${value > 0 ? formatWhatsAppShortCurrency(value) : 'VALOR NÃO INFORMADO'}*`, `• ${shortenWhatsAppDescription(record.desc)}`);
         const location = extractWhatsAppLocation(record);
         if (location) lines.push(`• Local: ${location}`);
+        const organ = normalizeText(record.organ, 'Órgão não informado');
+        lines.push(`• Secretaria: *${organ}*`);
       });
     });
-
-    if (attendedWithoutValue.length > 0) {
-      lines.push('', '*VALOR NÃO INFORMADO*');
-      attendedWithoutValue.slice(0, 8).forEach((record) => {
-        lines.push(`• ${shortenWhatsAppDescription(record.desc)}`);
-        const organ = normalizeText(record.organ, '');
-        if (organ) lines.push(`• Secretaria: *${organ}*`);
-      });
-    }
   }
 
   if (licensingRecords.length > 0) {
@@ -850,15 +958,17 @@ function buildWordTemplateData(records, filters) {
   const open = records.filter((record) => ['EM_ABERTO', 'EM_ESTUDO', 'LICITACAO'].includes(record.statusStd));
   const attendedInvestment = attended.reduce((sum, record) => sum + record.val, 0);
   const openInvestment = open.reduce((sum, record) => sum + record.val, 0);
-  const desiredHighlightCount = Math.max(8, Math.min(15, open.length));
+  const { highlights: attendedHighlights } = buildAttendedInvestmentHighlights(records, {
+    baseCount: 8,
+    extraCount: 6,
+    hardCap: 30
+  });
 
-  const highlights = attended
-    .toSorted((left, right) => right.val - left.val)
-    .slice(0, desiredHighlightCount)
+  const highlights = attendedHighlights
     .map((record) => ({
       area: record.area,
       organ: record.organ,
-      valor: `• ${formatBRL(record.val)}`,
+      valor: record.val > 0 ? `• ${formatBRL(record.val)}` : '• VALOR NÃO INFORMADO',
       desc: record.desc
     }));
 
@@ -1026,12 +1136,15 @@ export function normalizeDatasetFromMapping(dataset, mappings) {
 
 export function buildSnapshot(dataset, options) {
   const { filters, filteredRecords } = applyFilters(dataset.normalizedRecords || [], options.filters || DEFAULT_FILTERS);
+  const scopedRecords = applyExcludedRecords(filteredRecords, options.excludedRecordIds || []);
+  const filteredQuality = auditDataQuality(scopedRecords);
+  const filteredDuplicates = detectDuplicates(scopedRecords);
   const currentPage = Number(options.currentPage || 1);
   const pageSize = Number(options.pageSize || 25);
-  const maxPage = Math.max(1, Math.ceil(filteredRecords.length / pageSize) || 1);
+  const maxPage = Math.max(1, Math.ceil(scopedRecords.length / pageSize) || 1);
   const safePage = Math.min(Math.max(1, currentPage), maxPage);
   const pageStart = (safePage - 1) * pageSize;
-  const pageRecords = filteredRecords.slice(pageStart, pageStart + pageSize);
+  const pageRecords = scopedRecords.slice(pageStart, pageStart + pageSize);
 
   return {
     datasetId: dataset.id,
@@ -1039,21 +1152,22 @@ export function buildSnapshot(dataset, options) {
     importedSheetName: dataset.importedSheetName,
     filters,
     filterOptions: buildFilterOptions(dataset.normalizedRecords || []),
-    qualityScore: dataset.qualityScore || 0,
-    fieldStats: dataset.fieldStats || {},
-    detectedDuplicates: dataset.detectedDuplicates || [],
+    qualityScore: filteredQuality.qualityScore,
+    fieldStats: filteredQuality.fieldStats,
+    detectedDuplicates: filteredDuplicates,
     normalizedRecords: dataset.normalizedRecords || [],
-    filteredRecords,
+    filteredRecords: scopedRecords,
     pageRecords,
     currentPage: safePage,
     pageSize,
-    totalFiltered: filteredRecords.length,
-    whatsappSummaryText: buildWhatsAppExecutiveSummary(filteredRecords.length ? filteredRecords : (dataset.normalizedRecords || []), filters)
+    totalFiltered: scopedRecords.length,
+    whatsappSummaryText: buildWhatsAppExecutiveSummary(scopedRecords, filters)
   };
 }
 
-export function buildWorkbookFromDataset(dataset, filters) {
+export function buildWorkbookFromDataset(dataset, filters, excludedRecordIds = []) {
   const { filteredRecords } = applyFilters(dataset.normalizedRecords || [], filters);
+  const scopedRecords = applyExcludedRecords(filteredRecords, excludedRecordIds);
   const sourceAoa = Array.isArray(dataset.aoa) ? dataset.aoa : [];
 
   if (!sourceAoa.length) {
@@ -1062,14 +1176,14 @@ export function buildWorkbookFromDataset(dataset, filters) {
     throw error;
   }
 
-  if (!filteredRecords.length) {
+  if (!scopedRecords.length) {
     const error = new Error('Não há registros no recorte atual para gerar a planilha tratada.');
     error.statusCode = 400;
     throw error;
   }
 
   const headerRow = sourceAoa[0] || [];
-  const filteredRowIndexes = new Set(filteredRecords.map((record) => Number(record.sourceAoaRowIndex)).filter((index) => Number.isInteger(index) && index > 0));
+  const filteredRowIndexes = new Set(scopedRecords.map((record) => Number(record.sourceAoaRowIndex)).filter((index) => Number.isInteger(index) && index > 0));
   const dataRows = sourceAoa
     .slice(1)
     .map((row, index) => ({ row, sourceAoaRowIndex: index + 1 }))
@@ -1141,10 +1255,12 @@ export function buildWorkbookFromDataset(dataset, filters) {
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellStyles: true, bookSST: true });
 }
 
-export async function buildWordReport({ dataset, filters, templatePath }) {
+export async function buildWordReport({ dataset, filters, excludedRecordIds = [], includedRecordIds = [], templatePath }) {
   const { filteredRecords } = applyFilters(dataset.normalizedRecords || [], filters);
+  const includedScopedRecords = applyIncludedRecords(filteredRecords, includedRecordIds);
+  const scopedRecords = applyExcludedRecords(includedScopedRecords, excludedRecordIds);
 
-  if (!filteredRecords.length) {
+  if (!scopedRecords.length) {
     const error = new Error('Não há dados filtrados para gerar o relatório.');
     error.statusCode = 400;
     throw error;
@@ -1159,7 +1275,7 @@ export async function buildWordReport({ dataset, filters, templatePath }) {
     linebreaks: true
   });
 
-  const reportData = buildWordTemplateData(filteredRecords, filters);
+  const reportData = buildWordTemplateData(scopedRecords, filters);
   document.render(reportData);
 
   return {
