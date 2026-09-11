@@ -210,6 +210,32 @@ function stringSimilarity(textA, textB) {
   return union.size ? intersection.size / union.size : 0;
 }
 
+function tokenizeForDuplicateCheck(text) {
+  const normalized = normalizeNameKey(text);
+  if (!normalized) return [];
+  return normalized.split(' ').filter(Boolean);
+}
+
+function buildPairKey(leftIndex, rightIndex) {
+  return leftIndex < rightIndex ? `${leftIndex}:${rightIndex}` : `${rightIndex}:${leftIndex}`;
+}
+
+function setSimilarity(wordsA, wordsB) {
+  if (!wordsA.size && !wordsB.size) return 1;
+  if (!wordsA.size || !wordsB.size) return 0;
+
+  let intersectionSize = 0;
+  const smaller = wordsA.size <= wordsB.size ? wordsA : wordsB;
+  const larger = smaller === wordsA ? wordsB : wordsA;
+
+  smaller.forEach((word) => {
+    if (larger.has(word)) intersectionSize += 1;
+  });
+
+  const unionSize = wordsA.size + wordsB.size - intersectionSize;
+  return unionSize ? intersectionSize / unionSize : 0;
+}
+
 function hygienizeMunicipioAndTerritorioRows(rows) {
   const seen = new Set();
   const nextRows = [];
@@ -229,15 +255,15 @@ function hygienizeMunicipioAndTerritorioRows(rows) {
       MUNICIPIO: plainMuni
     };
 
-    const rowKey = JSON.stringify({
-      muni: normalizeNameKey(cleanedRow.muni),
-      territorio: normalizeNameKey(cleanedRow.territorio || 'não consta'),
-      organ: normalizeNameKey(cleanedRow.organ || cleanedRow.orgao || 'Geral'),
-      desc: normalizeNameKey(cleanedRow.desc || cleanedRow.descricao || 'Sem Descrição'),
-      status: normalizeNameKey(cleanedRow.status || cleanedRow.statusRaw || 'Em Aberto'),
-      area: normalizeNameKey(cleanedRow.area || 'Infraestrutura e Geral'),
-      val: Number(cleanedRow.val ?? 0)
-    });
+    const rowKey = [
+      normalizeNameKey(cleanedRow.muni),
+      normalizeNameKey(cleanedRow.territorio || 'não consta'),
+      normalizeNameKey(cleanedRow.organ || cleanedRow.orgao || 'Geral'),
+      normalizeNameKey(cleanedRow.desc || cleanedRow.descricao || 'Sem Descrição'),
+      normalizeNameKey(cleanedRow.status || cleanedRow.statusRaw || 'Em Aberto'),
+      normalizeNameKey(cleanedRow.area || 'Infraestrutura e Geral'),
+      Number(cleanedRow.val ?? 0)
+    ].join('|');
 
     if (!seen.has(rowKey)) {
       seen.add(rowKey);
@@ -285,25 +311,56 @@ function auditDataQuality(normalizedRecords) {
 
 function detectDuplicates(normalizedRecords) {
   const duplicates = [];
+  const groupedRecords = new Map();
 
-  for (let firstIndex = 0; firstIndex < normalizedRecords.length; firstIndex += 1) {
-    for (let secondIndex = firstIndex + 1; secondIndex < normalizedRecords.length; secondIndex += 1) {
-      const first = normalizedRecords[firstIndex];
-      const second = normalizedRecords[secondIndex];
+  normalizedRecords.forEach((record, index) => {
+    const groupKey = `${String(record.muni || '').toLowerCase()}|${String(record.organ || '').toLowerCase()}`;
+    if (!groupedRecords.has(groupKey)) groupedRecords.set(groupKey, []);
+    groupedRecords.get(groupKey).push({
+      index,
+      record,
+      words: new Set(tokenizeForDuplicateCheck(record.desc))
+    });
+  });
 
-      if (first.muni.toLowerCase() !== second.muni.toLowerCase()) continue;
-      if (first.organ.toLowerCase() !== second.organ.toLowerCase()) continue;
+  groupedRecords.forEach((group) => {
+    if (group.length < 2) return;
 
-      const similarity = stringSimilarity(first.desc, second.desc);
-      if (similarity >= 0.75) {
-        duplicates.push({
-          item1: first,
-          item2: second,
-          similarity: Math.round(similarity * 100)
-        });
-      }
+    const tokenPostings = new Map();
+    const seenPairs = new Set();
+
+    for (let currentPosition = 0; currentPosition < group.length; currentPosition += 1) {
+      const current = group[currentPosition];
+      const candidatePositions = new Set();
+
+      current.words.forEach((word) => {
+        const positions = tokenPostings.get(word);
+        if (!positions) return;
+        positions.forEach((position) => candidatePositions.add(position));
+      });
+
+      candidatePositions.forEach((candidatePosition) => {
+        const candidate = group[candidatePosition];
+        const pairKey = buildPairKey(current.index, candidate.index);
+        if (seenPairs.has(pairKey)) return;
+        seenPairs.add(pairKey);
+
+        const similarity = setSimilarity(current.words, candidate.words);
+        if (similarity >= 0.75) {
+          duplicates.push({
+            item1: candidate.record,
+            item2: current.record,
+            similarity: Math.round(similarity * 100)
+          });
+        }
+      });
+
+      current.words.forEach((word) => {
+        if (!tokenPostings.has(word)) tokenPostings.set(word, []);
+        tokenPostings.get(word).push(currentPosition);
+      });
     }
-  }
+  });
 
   return duplicates;
 }
@@ -847,14 +904,14 @@ function prepareTemplateFormatting(zip) {
 }
 
 export function parseWorkbookBuffer(buffer, label = 'planilha') {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const workbook = XLSX.read(buffer, { type: 'buffer', dense: true });
   const sheetName = workbook.SheetNames[0] || 'Planilha 1';
   const sheet = workbook.Sheets[sheetName];
   const jsonRows = XLSX.utils.sheet_to_json(sheet, { defval: '' }).map((row, index) => ({
     ...row,
     __sourceAoaRowIndex: Number.isInteger(row.__rowNum__) ? row.__rowNum__ : index + 1
   }));
-  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
 
   if (!jsonRows.length) {
     const error = new Error(`A planilha ${label} está vazia.`);
