@@ -467,12 +467,22 @@ function formatBRL(value) {
 function formatWhatsAppShortCurrency(value) {
   const amount = Number(value || 0);
   if (!Number.isFinite(amount) || amount <= 0) return 'R$ 0,00';
+
+  // Trata valores a partir de 1 Bilhão (ex: R$ 4,08 bi)
+  if (amount >= 1000000000) {
+    return `R$ ${(amount / 1000000000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} bi`;
+  }
+
+  // Trata valores a partir de 1 Milhão (ex: R$ 250,50 mi)
   if (amount >= 1000000) {
     return `R$ ${(amount / 1000000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi`;
   }
+
+  // Trata valores a partir de 1 Mil (ex: R$ 500,0 mil)
   if (amount >= 1000) {
     return `R$ ${(amount / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mil`;
   }
+
   return formatBRL(amount);
 }
 
