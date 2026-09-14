@@ -15,6 +15,10 @@ const STATUS_LABELS = {
 const OPEN_STATUS_SET = new Set(['EM_ABERTO', 'EM_ESTUDO', 'LICITACAO']);
 const ATTENDED_STATUS_SET = new Set(['ATENDIDO', 'CONVENIO']);
 
+function getStatusLabel(statusValue) {
+  return STATUS_LABELS[String(statusValue || '').toUpperCase()] || 'Em Aberto';
+}
+
 const MUNICIPALITY_ALIASES = {
   'dario meira': 'Dário Meira',
   dario: 'Dário',
@@ -166,6 +170,8 @@ function normalizeTerritorioName(value, fallback = 'não consta') {
 function normalizeStatusValue(rawStatus) {
   const cleaned = stripDiacritics(normalizeText(rawStatus, 'EM_ABERTO')).toLowerCase();
 
+  if (cleaned.includes('nao public')) return 'EM_ABERTO';
+  if (cleaned.includes('public')) return 'ATENDIDO';
   if (cleaned.includes('conclu') || cleaned.includes('atendid') || cleaned.includes('entreg') || cleaned.includes('finaliz')) return 'ATENDIDO';
   if (cleaned.includes('conven')) return 'CONVENIO';
   if (cleaned.includes('licit')) return 'LICITACAO';
@@ -616,6 +622,15 @@ function buildWhatsAppExecutiveSummary(records, filters) {
   const municipalities = [...new Set(records.map((record) => record.muni).filter(Boolean))];
   const territories = [...new Set(records.map((record) => record.territorio).filter(Boolean))];
   let municipalityName = 'BAHIA';
+  let lines = [];
+
+  const appendLines = (...entries) => {
+    lines = lines.concat(entries);
+  };
+
+  const appendBlock = (entries) => {
+    lines = lines.concat(entries);
+  };
 
   if (filters.municipality !== 'ALL') {
     municipalityName = filters.municipality.toUpperCase();
@@ -629,11 +644,9 @@ function buildWhatsAppExecutiveSummary(records, filters) {
 
   const attendedRecords = records.filter((record) => isAttendedStatus(record.statusStd));
   const openRecords = records.filter((record) => isOpenStatus(record.statusStd));
-  const licensingRecords = records.filter((record) => String(record.statusStd || '').toUpperCase() === 'LICITACAO');
   const cancelledRecords = records.filter((record) => String(record.statusStd || '').toUpperCase() === 'CANCELADO');
   const attendedValue = attendedRecords.reduce((total, record) => total + Number(record.val || 0), 0);
-  const licensingValue = licensingRecords.reduce((total, record) => total + Number(record.val || 0), 0);
-  const lines = [
+  lines = [
     `*RESUMO DE INVESTIMENTOS E AÇÕES – ${municipalityName}*`,
     '',
     '*PANORAMA GERAL*',
@@ -646,17 +659,12 @@ function buildWhatsAppExecutiveSummary(records, filters) {
   ];
 
   if (cancelledRecords.length > 0) {
-    lines.push(`• Cancelados: *${cancelledRecords.length}*`);
+    appendLines(`• Cancelados: *${cancelledRecords.length}*`);
   }
 
-  const { highlights: investmentHighlights } = buildAttendedInvestmentHighlights(records, {
-    baseCount: 8,
-    extraCount: 6,
-    hardCap: 30
-  });
   const groupedAreas = {};
 
-  investmentHighlights.forEach((record) => {
+  attendedRecords.forEach((record) => {
     const area = getWhatsAppAreaTitle(record.area);
     groupedAreas[area] = groupedAreas[area] || [];
     groupedAreas[area].push(record);
@@ -668,56 +676,46 @@ function buildWhatsAppExecutiveSummary(records, filters) {
     return totalB - totalA;
   });
 
-  if (investmentHighlights.length > 0) {
-    lines.push('', '━━━━━━━━━━━━━━━━━━', '*DESTAQUES – MAIORES INVESTIMENTOS*', '━━━━━━━━━━━━━━━━━━');
+  if (attendedRecords.length > 0) {
+    appendLines('', '━━━━━━━━━━━━━━━━━━', '*ATENDIDOS / PUBLICADOS*', '━━━━━━━━━━━━━━━━━━');
 
     areaEntries.forEach(([area, areaRecords]) => {
       if (!areaRecords.length) return;
 
-      lines.push('', `*${area}*`);
+      appendLines('', `*${area}*`);
 
       areaRecords.forEach((record) => {
         const value = Number(record.val || 0);
-        lines.push('', `*${value > 0 ? formatWhatsAppShortCurrency(value) : 'VALOR NÃO INFORMADO'}*`, `• ${shortenWhatsAppDescription(record.desc)}`);
+        appendLines('', `*${value > 0 ? formatWhatsAppShortCurrency(value) : 'VALOR NÃO INFORMADO'}*`, `• ${shortenWhatsAppDescription(record.desc)}`);
         const location = extractWhatsAppLocation(record);
-        if (location) lines.push(`• Local: ${location}`);
+        if (location) appendLines(`• Local: ${location}`);
         const organ = normalizeText(record.organ, 'Órgão não informado');
-        lines.push(`• Secretaria: *${organ}*`);
+        appendLines(`• Secretaria: *${organ}*`);
       });
     });
   }
 
-  if (licensingRecords.length > 0) {
-    lines.push('', '━━━━━━━━━━━━━━━━━━', '*EM LICITAÇÃO*', '━━━━━━━━━━━━━━━━━━');
-    licensingRecords.toSorted((left, right) => Number(right.val || 0) - Number(left.val || 0)).slice(0, 10).forEach((record) => {
-      const value = Number(record.val || 0);
-      lines.push('');
-      lines.push(value > 0 ? `*${formatWhatsAppShortCurrency(value)}*` : '*Valor não informado*');
-      lines.push(`• ${shortenWhatsAppDescription(record.desc)}`);
-      const location = extractWhatsAppLocation(record);
-      if (location) lines.push(`• Local: ${location}`);
-      const organ = normalizeText(record.organ, '');
-      if (organ) lines.push(`• Secretaria: *${organ}*`);
-    });
-  }
-
   if (openRecords.length > 0) {
-    lines.push('', '━━━━━━━━━━━━━━━━━━', '*PLEITOS EM ABERTO*', '━━━━━━━━━━━━━━━━━━');
-    openRecords.toSorted((left, right) => Number(right.val || 0) - Number(left.val || 0)).slice(0, 15).forEach((record) => {
+    appendLines('', '━━━━━━━━━━━━━━━━━━', '*PLEITOS EM ABERTO*', '━━━━━━━━━━━━━━━━━━');
+    openRecords.toSorted((left, right) => Number(right.val || 0) - Number(left.val || 0)).forEach((record) => {
+      const value = Number(record.val || 0);
       const organ = normalizeText(record.organ, '');
-      lines.push('');
-      lines.push(organ ? `• Secretaria: *${organ}*` : '• Secretaria: *Órgão não informado*');
-      lines.push(`• ${shortenWhatsAppDescription(record.desc, 300)}`);
+      appendBlock([
+        '',
+        value > 0 ? `*${formatWhatsAppShortCurrency(value)}*` : '*Valor não informado*',
+        organ ? `• Secretaria: *${organ}*` : '• Secretaria: *Órgão não informado*',
+        `• ${shortenWhatsAppDescription(record.desc, 300)}`,
+        `• Status: *${getStatusLabel(record.statusStd)}*`
+      ]);
     });
   }
 
-  lines.push('', '━━━━━━━━━━━━━━━━━━', '*RESUMO*');
-  lines.push(`• *${attendedRecords.length}* pleitos atendidos/publicados`);
-  lines.push(`• *${openRecords.length}* pleitos em aberto`);
-  lines.push(`• *${formatWhatsAppShortCurrency(attendedValue)}* em investimentos atendidos/publicados`);
-  if (licensingRecords.length > 0) {
-    lines.push(`• *${formatWhatsAppShortCurrency(licensingValue)}* em obras em licitação`);
-  }
+  appendLines('', '━━━━━━━━━━━━━━━━━━', '*RESUMO*');
+  appendBlock([
+    `• *${attendedRecords.length}* pleitos atendidos/publicados`,
+    `• *${openRecords.length}* pleitos em aberto`,
+    `• *${formatWhatsAppShortCurrency(attendedValue)}* em investimentos atendidos/publicados`
+  ]);
 
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -958,13 +956,9 @@ function buildWordTemplateData(records, filters) {
   const open = records.filter((record) => ['EM_ABERTO', 'EM_ESTUDO', 'LICITACAO'].includes(record.statusStd));
   const attendedInvestment = attended.reduce((sum, record) => sum + record.val, 0);
   const openInvestment = open.reduce((sum, record) => sum + record.val, 0);
-  const { highlights: attendedHighlights } = buildAttendedInvestmentHighlights(records, {
-    baseCount: 8,
-    extraCount: 6,
-    hardCap: 30
-  });
 
-  const highlights = attendedHighlights
+  const highlights = attended
+    .toSorted(compareInvestmentRecords)
     .map((record) => ({
       area: record.area,
       organ: record.organ,
