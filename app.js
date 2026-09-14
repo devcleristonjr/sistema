@@ -273,8 +273,7 @@ function buildWhatsAppSummaryFromDisplayedData(records, filters) {
         `• Total de pleitos: *${records.length}*`,
         `• Atendidos / Publicados: *${attendedRecords.length}*`,
         `• Em aberto: *${openRecords.length}*`,
-        `• Investimentos atendidos/publicados: *${formatWhatsAppShortCurrency(attendedValue)}*`,
-        `• Aproximadamente *${formatBRL(attendedValue)}*`
+        `• Investimentos atendidos/publicados: *${formatBRL(attendedValue)}*`,
     ];
 
     if (cancelledRecords.length > 0) {
