@@ -204,6 +204,38 @@ function isAttendedStatus(statusValue) {
   return ATTENDED_STATUS_SET.has(String(statusValue || '').toUpperCase());
 }
 
+function calculateReportMetrics(records) {
+  const safeRecords = Array.isArray(records) ? records : [];
+
+  const attendedRecords = safeRecords.filter((record) =>
+    isAttendedStatus(record.statusStd)
+  );
+
+  const openRecords = safeRecords.filter((record) =>
+    isOpenStatus(record.statusStd)
+  );
+
+  const attendedValue = attendedRecords.reduce(
+    (total, record) => total + Number(record.val || 0),
+    0
+  );
+
+  const openValue = openRecords.reduce(
+    (total, record) => total + Number(record.val || 0),
+    0
+  );
+
+  return {
+    totalRecords: safeRecords.length,
+    attendedRecords,
+    openRecords,
+    attendedCount: attendedRecords.length,
+    openCount: openRecords.length,
+    attendedValue,
+    openValue
+  };
+}
+
 function classifyAreaByText(desc) {
   const text = normalizeText(desc, '').toLowerCase();
   if (text.includes('escola') || text.includes('colegio') || text.includes('quadra') || text.includes('ginasio') || text.includes('creche')) return 'Educação e Esporte';
@@ -652,10 +684,15 @@ function buildWhatsAppExecutiveSummary(records, filters) {
     municipalityName = `TERRITÓRIO ${territories[0]}`.toUpperCase();
   }
 
-  const attendedRecords = records.filter((record) => isAttendedStatus(record.statusStd));
-  const openRecords = records.filter((record) => isOpenStatus(record.statusStd));
-  const cancelledRecords = records.filter((record) => String(record.statusStd || '').toUpperCase() === 'CANCELADO');
-  const attendedValue = attendedRecords.reduce((total, record) => total + Number(record.val || 0), 0);
+  const metrics = calculateReportMetrics(records);
+
+  const attendedRecords = metrics.attendedRecords;
+  const openRecords = metrics.openRecords;
+  const attendedValue = metrics.attendedValue;
+
+  const cancelledRecords = records.filter(
+    (record) => String(record.statusStd || '').toUpperCase() === 'CANCELADO'
+  );
   lines = [
     `*RESUMO DE INVESTIMENTOS E AÇÕES – ${municipalityName}*`,
     '',
@@ -962,10 +999,13 @@ function millions(value) {
 }
 
 function buildWordTemplateData(records, filters) {
-  const attended = records.filter((record) => record.statusStd === 'ATENDIDO' || record.statusStd === 'CONVENIO');
-  const open = records.filter((record) => ['EM_ABERTO', 'EM_ESTUDO', 'LICITACAO'].includes(record.statusStd));
-  const attendedInvestment = attended.reduce((sum, record) => sum + record.val, 0);
-  const openInvestment = open.reduce((sum, record) => sum + record.val, 0);
+  const metrics = calculateReportMetrics(records);
+
+  const attended = metrics.attendedRecords;
+  const open = metrics.openRecords;
+
+  const attendedInvestment = metrics.attendedValue;
+  const openInvestment = metrics.openValue;
 
   const highlights = attended
     .toSorted(compareInvestmentRecords)
@@ -1260,9 +1300,15 @@ export function buildWorkbookFromDataset(dataset, filters, excludedRecordIds = [
 }
 
 export async function buildWordReport({ dataset, filters, excludedRecordIds = [], includedRecordIds = [], templatePath }) {
-  const { filteredRecords } = applyFilters(dataset.normalizedRecords || [], filters);
-  const includedScopedRecords = applyIncludedRecords(filteredRecords, includedRecordIds);
-  const scopedRecords = applyExcludedRecords(includedScopedRecords, excludedRecordIds);
+  const { filteredRecords } = applyFilters(
+    dataset.normalizedRecords || [],
+    filters
+  );
+
+  const scopedRecords = applyExcludedRecords(
+    filteredRecords,
+    excludedRecordIds
+  );
 
   if (!scopedRecords.length) {
     const error = new Error('Não há dados filtrados para gerar o relatório.');
