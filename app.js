@@ -246,23 +246,25 @@ function buildWhatsAppSummaryFromDisplayedData(records, filters) {
     const openRecords = records.filter((record) => isOpenStatus(record.statusStd));
     const cancelledRecords = records.filter((record) => String(record.statusStd || '').toUpperCase() === 'CANCELADO');
     const attendedValue = attendedRecords.reduce((sum, record) => sum + Number(record.val || 0), 0);
-    const groupedAreas = {};
+
+    const groupedOrgans = {};
     let lines = [];
 
     const appendLines = (...entries) => {
         lines = lines.concat(entries);
     };
 
+    // Agrupa os atendidos/publicados por Secretaria/Órgão
     attendedRecords.forEach((record) => {
-        const area = getWhatsAppAreaTitle(record.area);
-        groupedAreas[area] = groupedAreas[area] || [];
-        groupedAreas[area].push(record);
+        const organ = normalizeText(record.organ, 'Orgao nao informado');
+
+        groupedOrgans[organ] = groupedOrgans[organ] || [];
+        groupedOrgans[organ].push(record);
     });
 
-    const areaEntries = Object.entries(groupedAreas).sort((left, right) => {
-        const totalLeft = left[1].reduce((sum, record) => sum + Number(record.val || 0), 0);
-        const totalRight = right[1].reduce((sum, record) => sum + Number(record.val || 0), 0);
-        return totalRight - totalLeft;
+    // Ordena as secretarias alfabeticamente
+    const organEntries = Object.entries(groupedOrgans).sort((left, right) => {
+        return left[0].localeCompare(right[0], 'pt-BR');
     });
 
     lines = [
@@ -281,38 +283,98 @@ function buildWhatsAppSummaryFromDisplayedData(records, filters) {
     }
 
     if (attendedRecords.length > 0) {
-        appendLines('', '━━━━━━━━━━━━━━━━━━', '*ATENDIDOS / PUBLICADOS*', '━━━━━━━━━━━━━━━━━━');
-        areaEntries.forEach(([area, items]) => {
-            appendLines('', `*${area}*`);
+        appendLines(
+            '',
+            '━━━━━━━━━━━━━━━━━━',
+            '*ATENDIDOS / PUBLICADOS*',
+            '━━━━━━━━━━━━━━━━━━'
+        );
+
+        organEntries.forEach(([organ, items]) => {
+            const organTotal = items.reduce(
+                (sum, record) => sum + Number(record.val || 0),
+                0
+            );
+
+            appendLines(
+                '',
+                `*${organ} — ${items.length} ${items.length === 1 ? 'ITEM' : 'ITENS'}*`,
+                '━━━━━━━━━━━━━━━━━━'
+            );
+
             items.forEach((record) => {
                 const value = Number(record.val || 0);
-                const organ = normalizeText(record.organ, 'Orgao nao informado');
+
                 appendLines(
                     '',
                     `*${value > 0 ? formatWhatsAppShortCurrency(value) : 'VALOR NAO INFORMADO'}*`,
-                    `• ${shortenWhatsAppDescription(record.desc)}`,
-                    `• Secretaria: *${organ}*`
+                    `• ${shortenWhatsAppDescription(record.desc)}`
                 );
             });
+
+            appendLines(
+                '',
+                `💰 *Total ${organ}: ${formatBRL(organTotal)}*`
+            );
         });
     }
 
     if (openRecords.length > 0) {
-        appendLines('', '━━━━━━━━━━━━━━━━━━', '*PLEITOS EM ABERTO*', '━━━━━━━━━━━━━━━━━━');
-        openRecords
-            .slice()
-            .sort(compareWhatsAppRecords)
-            .forEach((record) => {
-                const value = Number(record.val || 0);
-                const organ = normalizeText(record.organ, 'Orgao nao informado');
-                appendLines(
-                    '',
-                    value > 0 ? `*${formatWhatsAppShortCurrency(value)}*` : '*Valor nao informado*',
-                    `• Secretaria: *${organ}*`,
-                    `• ${shortenWhatsAppDescription(record.desc, 300)}`,
-                    `• Status: *${getStatusLabel(record.statusStd)}*`
-                );
-            });
+        const groupedOpenOrgans = {};
+
+        // Agrupa os pleitos em aberto por Secretaria/Órgão
+        openRecords.forEach((record) => {
+            const organ = normalizeText(record.organ, 'Orgao nao informado');
+
+            groupedOpenOrgans[organ] = groupedOpenOrgans[organ] || [];
+            groupedOpenOrgans[organ].push(record);
+        });
+
+        // Ordena as secretarias alfabeticamente
+        const openOrganEntries = Object.entries(groupedOpenOrgans).sort((left, right) => {
+            return left[0].localeCompare(right[0], 'pt-BR');
+        });
+
+        appendLines(
+            '',
+            '━━━━━━━━━━━━━━━━━━',
+            '*PLEITOS EM ABERTO*',
+            '━━━━━━━━━━━━━━━━━━'
+        );
+
+        openOrganEntries.forEach(([organ, items]) => {
+            const organTotal = items.reduce(
+                (sum, record) => sum + Number(record.val || 0),
+                0
+            );
+
+            appendLines(
+                '',
+                `*${organ} — ${items.length} ${items.length === 1 ? 'ITEM' : 'ITENS'}*`,
+                '━━━━━━━━━━━━━━━━━━'
+            );
+
+            items
+                .slice()
+                .sort(compareWhatsAppRecords)
+                .forEach((record) => {
+                    const value = Number(record.val || 0);
+
+                    appendLines(
+                        '',
+                        value > 0
+                            ? `*${formatWhatsAppShortCurrency(value)}*`
+                            : '*Valor nao informado*',
+                        `• ${shortenWhatsAppDescription(record.desc, 300)}`,
+                        `• Status: *${getStatusLabel(record.statusStd)}*`
+                    );
+                });
+
+            appendLines(
+                '',
+                `💰 *Total ${organ}: ${formatBRL(organTotal)}*`
+            );
+        });
     }
 
     appendLines('', '━━━━━━━━━━━━━━━━━━', '*RESUMO*');

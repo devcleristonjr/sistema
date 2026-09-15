@@ -708,62 +708,151 @@ function buildWhatsAppExecutiveSummary(records, filters) {
     appendLines(`• Cancelados: *${cancelledRecords.length}*`);
   }
 
-  const groupedAreas = {};
+  const groupedOrgans = new Map();
 
   attendedRecords.forEach((record) => {
-    const area = getWhatsAppAreaTitle(record.area);
-    groupedAreas[area] = groupedAreas[area] || [];
-    groupedAreas[area].push(record);
+    const organ = normalizeText(record.organ, 'Órgão não informado');
+
+    if (!groupedOrgans.has(organ)) {
+      groupedOrgans.set(organ, []);
+    }
+
+    groupedOrgans.get(organ).push(record);
   });
 
-  const areaEntries = Object.entries(groupedAreas).toSorted(([, recordsA], [, recordsB]) => {
-    const totalA = recordsA.reduce((sum, record) => sum + Number(record.val || 0), 0);
-    const totalB = recordsB.reduce((sum, record) => sum + Number(record.val || 0), 0);
-    return totalB - totalA;
-  });
+  const organEntries = [...groupedOrgans.entries()]
+    .sort(([organA], [organB]) =>
+      organA.localeCompare(organB, 'pt-BR')
+    );
 
+  // ==========================================
+  // ATENDIDOS / PUBLICADOS AGRUPADOS POR ÓRGÃO
+  // ==========================================
   if (attendedRecords.length > 0) {
-    appendLines('', '━━━━━━━━━━━━━━━━━━', '*ATENDIDOS / PUBLICADOS*', '━━━━━━━━━━━━━━━━━━');
+    appendLines(
+      '',
+      '━━━━━━━━━━━━━━━━━━',
+      '*ATENDIDOS / PUBLICADOS*',
+      '━━━━━━━━━━━━━━━━━━'
+    );
 
-    areaEntries.forEach(([area, areaRecords]) => {
-      if (!areaRecords.length) return;
+    organEntries.forEach(([organ, organRecords]) => {
+      if (!organRecords.length) return;
 
-      appendLines('', `*${area}*`);
+      const organTotal = organRecords.reduce(
+        (sum, record) => sum + Number(record.val || 0),
+        0
+      );
 
-      areaRecords.forEach((record) => {
-        const value = Number(record.val || 0);
-        appendLines('', `*${value > 0 ? formatWhatsAppShortCurrency(value) : 'VALOR NÃO INFORMADO'}*`, `• ${shortenWhatsAppDescription(record.desc)}`);
-        const location = extractWhatsAppLocation(record);
-        if (location) appendLines(`• Local: ${location}`);
-        const organ = normalizeText(record.organ, 'Órgão não informado');
-        appendLines(`• Secretaria: *${organ}*`);
-      });
-    });
-  }
-
-  if (openRecords.length > 0) {
-    appendLines('', '━━━━━━━━━━━━━━━━━━', '*PLEITOS EM ABERTO*', '━━━━━━━━━━━━━━━━━━');
-    openRecords.toSorted((left, right) => Number(right.val || 0) - Number(left.val || 0)).forEach((record) => {
-      const value = Number(record.val || 0);
-      const organ = normalizeText(record.organ, '');
-      appendBlock([
+      appendLines(
         '',
-        value > 0 ? `*${formatWhatsAppShortCurrency(value)}*` : '*Valor não informado*',
-        organ ? `• Secretaria: *${organ}*` : '• Secretaria: *Órgão não informado*',
-        `• ${shortenWhatsAppDescription(record.desc, 300)}`,
-        `• Status: *${getStatusLabel(record.statusStd)}*`
-      ]);
+        `*${organ} — ${organRecords.length} ${organRecords.length === 1 ? 'ITEM' : 'ITENS'}*`,
+        '━━━━━━━━━━━━━━━━━━'
+      );
+
+      organRecords.forEach((record) => {
+        const value = Number(record.val || 0);
+
+        appendLines(
+          '',
+          `*${value > 0 ? formatWhatsAppShortCurrency(value) : 'VALOR NÃO INFORMADO'}*`,
+          `• ${shortenWhatsAppDescription(record.desc)}`
+        );
+
+        const location = extractWhatsAppLocation(record);
+
+        if (location) {
+          appendLines(`• Local: ${location}`);
+        }
+      });
+
+      appendLines(
+        '',
+        `💰 *Total ${organ}: ${formatBRL(organTotal)}*`
+      );
     });
   }
 
-  appendLines('', '━━━━━━━━━━━━━━━━━━', '*RESUMO*');
+  // ==========================================
+  // PLEITOS EM ABERTO
+  // ==========================================
+  if (openRecords.length > 0) {
+    const groupedOpenOrgans = {};
+
+    // Agrupa os pleitos em aberto por Secretaria/Órgão
+    openRecords.forEach((record) => {
+      const organ = normalizeText(record.organ, 'Orgao nao informado');
+
+      groupedOpenOrgans[organ] = groupedOpenOrgans[organ] || [];
+      groupedOpenOrgans[organ].push(record);
+    });
+
+    // Ordena as secretarias alfabeticamente
+    const openOrganEntries = Object.entries(groupedOpenOrgans).sort((left, right) => {
+      return left[0].localeCompare(right[0], 'pt-BR');
+    });
+
+    appendLines(
+      '',
+      '━━━━━━━━━━━━━━━━━━',
+      '*PLEITOS EM ABERTO*',
+      '━━━━━━━━━━━━━━━━━━'
+    );
+
+    openOrganEntries.forEach(([organ, items]) => {
+      const organTotal = items.reduce(
+        (sum, record) => sum + Number(record.val || 0),
+        0
+      );
+
+      appendLines(
+        '',
+        `*${organ} — ${items.length} ${items.length === 1 ? 'ITEM' : 'ITENS'}*`,
+        '━━━━━━━━━━━━━━━━━━'
+      );
+
+      items
+        .slice()
+        .sort(compareWhatsAppRecords)
+        .forEach((record) => {
+          const value = Number(record.val || 0);
+
+          appendLines(
+            '',
+            value > 0
+              ? `*${formatWhatsAppShortCurrency(value)}*`
+              : '*Valor nao informado*',
+            `• ${shortenWhatsAppDescription(record.desc, 300)}`,
+            `• Status: *${getStatusLabel(record.statusStd)}*`
+          );
+        });
+
+      appendLines(
+        '',
+        `💰 *Total ${organ}: ${formatBRL(organTotal)}*`
+      );
+    });
+  }
+
+  // ==========================================
+  // RESUMO FINAL
+  // ==========================================
+  appendLines(
+    '',
+    '━━━━━━━━━━━━━━━━━━',
+    '*RESUMO*'
+  );
+
   appendBlock([
     `• *${attendedRecords.length}* pleitos atendidos/publicados`,
     `• *${openRecords.length}* pleitos em aberto`,
-    `• *${formatWhatsAppShortCurrency(attendedValue)}* em investimentos atendidos/publicados`
+    `• *${formatBRL(attendedValue)}* em investimentos atendidos/publicados`
   ]);
 
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return lines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function cleanExportText(value) {
