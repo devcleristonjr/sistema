@@ -104,6 +104,15 @@ function normalizeExcludedRecordIds(values) {
   );
 }
 
+function normalizeIncludedRecordIds(values) {
+  if (!Array.isArray(values) || !values.length) return new Set();
+  return new Set(
+    values
+      .map(Number)
+      .filter((value) => Number.isInteger(value) && value > 0)
+  );
+}
+
 function filterExcludedRecords(records, excludedRecordIds) {
   const excluded = normalizeExcludedRecordIds(excludedRecordIds);
   if (!excluded.size) return records;
@@ -1300,7 +1309,12 @@ export async function buildWordReport({ dataset, filters, excludedRecordIds = []
     excludedRecordIds
   );
 
-  if (!scopedRecords.length) {
+  const includedIds = normalizeIncludedRecordIds(includedRecordIds);
+  const exportRecords = includedIds.size
+    ? scopedRecords.filter((record) => includedIds.has(Number(record.id)))
+    : scopedRecords;
+
+  if (!exportRecords.length) {
     const error = new Error('Não há dados filtrados para gerar o relatório.');
     error.statusCode = 400;
     throw error;
@@ -1315,7 +1329,7 @@ export async function buildWordReport({ dataset, filters, excludedRecordIds = []
     linebreaks: true
   });
 
-  const reportData = buildWordTemplateData(scopedRecords, filters);
+  const reportData = buildWordTemplateData(exportRecords, filters);
   document.render(reportData);
 
   return {

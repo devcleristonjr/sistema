@@ -1429,18 +1429,21 @@ function buildPdfDataset(records) {
         organCards: [...uniqueOrgans].map((organName) => {
             const items = sortedRecords.filter((item) => item.organ === organName);
             const total = items.length;
-            const attendedCount = items.filter((item) => isAttendedStatus(item.statusStd)).length;
+            const attendedItems = items.filter((item) => isAttendedStatus(item.statusStd));
+            const attendedCount = attendedItems.length;
             const openCount = items.filter((item) => isOpenStatus(item.statusStd)).length;
-            const amount = items.reduce((sum, item) => sum + Number(item.val || 0), 0);
+            const attendedAmount = attendedItems.reduce((sum, item) => sum + Number(item.val || 0), 0);
+            const totalAmount = items.reduce((sum, item) => sum + Number(item.val || 0), 0);
             return {
                 organ: organName || 'Órgão não informado',
                 total,
                 attendedCount,
                 openCount,
-                amount,
+                attendedAmount,
+                totalAmount,
                 rate: total ? (attendedCount / total) * 100 : 0
             };
-        }).sort((left, right) => right.amount - left.amount),
+        }).sort((left, right) => right.totalAmount - left.totalAmount),
         records: sortedRecords,
         meta: {
             municipalities: uniqueMunicipalities.size,
@@ -1583,7 +1586,7 @@ function createOrganCardMarkup(card) {
                 <div class="pdf-card-row"><span>Atendidos</span><span>${escapeHtml(formatInteger(card.attendedCount))}</span></div>
                 <div class="pdf-card-row"><span>Em Aberto</span><span>${escapeHtml(formatInteger(card.openCount))}</span></div>
                 <div class="pdf-card-row"><span>Taxa</span><span>${escapeHtml(card.rate.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))}%</span></div>
-                <div class="pdf-card-row"><span>Valor Total</span><span>${escapeHtml(formatBRL(card.amount))}</span></div>
+                <div class="pdf-card-row"><span>Valor Atendido</span><span>${escapeHtml(formatBRL(card.attendedAmount))}</span></div>
             </div>
         </article>
     `;
@@ -1717,14 +1720,30 @@ function clearAdaptivePrintReport() {
     }
 }
 
-function generateExecutivePdf() {
-    const records = getPdfSourceRecords();
-    if (!records.length) {
-        alert('Não há dados disponíveis para gerar o PDF.');
+async function generateExecutivePdf() {
+    if (!AppState.datasetId) {
+        alert('Importe uma planilha antes de gerar o relatório PDF.');
         return;
     }
 
+    const button = document.querySelector('[data-action="export-pdf"]');
+    const originalText = button?.textContent;
+
     try {
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Gerando PDF...';
+        }
+
+        const refreshed = await refreshDatasetView(true);
+        if (!refreshed) return;
+
+        const records = getPdfSourceRecords();
+        if (!records.length) {
+            alert('Não há dados disponíveis para gerar o PDF.');
+            return;
+        }
+
         document.body.classList.add('is-printing-pdf');
         renderAdaptivePrintReport(records);
         const root = document.getElementById('print-report-root');
@@ -1741,6 +1760,11 @@ function generateExecutivePdf() {
     } catch (error) {
         clearAdaptivePrintReport();
         alert(`Erro ao gerar o relatório PDF: ${error?.message || error}`);
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = originalText || 'Gerar PDF Executivo';
+        }
     }
 }
 
