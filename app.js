@@ -159,7 +159,7 @@ function formatWhatsAppShortCurrency(value) {
 }
 
 function shortenWhatsAppDescription(description, maxLength = 240) {
-    const text = normalizeText(description, 'Sem Descricao').replace(/\s+/g, ' ').trim();
+    const text = normalizeText(description, 'Sem Descrição').replace(/\s+/g, ' ').trim();
     return text.length <= maxLength ? text : `${text.slice(0, maxLength - 3).trim()}...`;
 }
 
@@ -180,50 +180,17 @@ function compareWhatsAppRecords(left, right) {
     return Number(right?.val || 0) - Number(left?.val || 0);
 }
 
-function buildDisplayedHighlights(records) {
-    const attended = records.filter((record) => isAttendedStatus(record.statusStd));
-    if (!attended.length) return [];
-
-    const byOrgan = new Map();
-    attended.forEach((record) => {
-        const organ = normalizeText(record.organ, 'Orgao nao informado');
-        if (!byOrgan.has(organ)) byOrgan.set(organ, []);
-        byOrgan.get(organ).push(record);
-    });
-
-    byOrgan.forEach((items, key) => {
-        byOrgan.set(key, [...items].sort(compareWhatsAppRecords));
-    });
-
-    const representatives = [];
-    const remaining = [];
-
-    [...byOrgan.values()]
-        .sort((left, right) => compareWhatsAppRecords(left[0], right[0]))
-        .forEach((items) => {
-            if (!items.length) return;
-            representatives.push(items[0]);
-            if (items.length > 1) remaining.push(...items.slice(1));
-        });
-
-    const baseCount = 8;
-    const extraCount = 6;
-    const hardCap = 30;
-    const maxCount = Math.max(representatives.length, Math.min(hardCap, Math.max(baseCount, representatives.length) + extraCount));
-    const selected = [...representatives];
-    const selectedIds = new Set(selected.map((record) => Number(record.id)));
-
-    [...remaining]
-        .sort(compareWhatsAppRecords)
-        .forEach((record) => {
-            if (selected.length >= maxCount) return;
-            const id = Number(record.id);
-            if (selectedIds.has(id)) return;
-            selected.push(record);
-            selectedIds.add(id);
-        });
-
-    return selected.sort(compareWhatsAppRecords);
+function groupRecordsByOrgan(records, fallbackLabel = 'Órgão não informado') {
+    return Object.entries(
+        records.reduce((groups, record) => {
+            const organ = normalizeText(record.organ, fallbackLabel);
+            if (!groups[organ]) {
+                groups[organ] = [];
+            }
+            groups[organ].push(record);
+            return groups;
+        }, {})
+    ).sort(([left], [right]) => left.localeCompare(right, 'pt-BR'));
 }
 
 function getWhatsAppScopeLabel(records, filters) {
@@ -247,25 +214,13 @@ function buildWhatsAppSummaryFromDisplayedData(records, filters) {
     const cancelledRecords = records.filter((record) => String(record.statusStd || '').toUpperCase() === 'CANCELADO');
     const attendedValue = attendedRecords.reduce((sum, record) => sum + Number(record.val || 0), 0);
 
-    const groupedOrgans = {};
     let lines = [];
 
     const appendLines = (...entries) => {
         lines = lines.concat(entries);
     };
 
-    // Agrupa os atendidos/publicados por Secretaria/Órgão
-    attendedRecords.forEach((record) => {
-        const organ = normalizeText(record.organ, 'Orgao nao informado');
-
-        groupedOrgans[organ] = groupedOrgans[organ] || [];
-        groupedOrgans[organ].push(record);
-    });
-
-    // Ordena as secretarias alfabeticamente
-    const organEntries = Object.entries(groupedOrgans).sort((left, right) => {
-        return left[0].localeCompare(right[0], 'pt-BR');
-    });
+    const organEntries = groupRecordsByOrgan(attendedRecords);
 
     lines = [
         `*RESUMO DE INVESTIMENTOS E ACOES - ${getWhatsAppScopeLabel(records, filters)}*`,
@@ -307,7 +262,7 @@ function buildWhatsAppSummaryFromDisplayedData(records, filters) {
 
                 appendLines(
                     '',
-                    `*${value > 0 ? formatWhatsAppShortCurrency(value) : 'VALOR NAO INFORMADO'}*`,
+                    `*${value > 0 ? formatWhatsAppShortCurrency(value) : 'VALOR NÃO INFORMADO'}*`,
                     `• ${shortenWhatsAppDescription(record.desc)}`
                 );
             });
@@ -320,20 +275,7 @@ function buildWhatsAppSummaryFromDisplayedData(records, filters) {
     }
 
     if (openRecords.length > 0) {
-        const groupedOpenOrgans = {};
-
-        // Agrupa os pleitos em aberto por Secretaria/Órgão
-        openRecords.forEach((record) => {
-            const organ = normalizeText(record.organ, 'Orgao nao informado');
-
-            groupedOpenOrgans[organ] = groupedOpenOrgans[organ] || [];
-            groupedOpenOrgans[organ].push(record);
-        });
-
-        // Ordena as secretarias alfabeticamente
-        const openOrganEntries = Object.entries(groupedOpenOrgans).sort((left, right) => {
-            return left[0].localeCompare(right[0], 'pt-BR');
-        });
+        const openOrganEntries = groupRecordsByOrgan(openRecords);
 
         appendLines(
             '',
@@ -364,7 +306,7 @@ function buildWhatsAppSummaryFromDisplayedData(records, filters) {
                         '',
                         value > 0
                             ? `*${formatWhatsAppShortCurrency(value)}*`
-                            : '*Valor nao informado*',
+                            : '*Valor não informado*',
                         `• ${shortenWhatsAppDescription(record.desc, 300)}`,
                         `• Status: *${getStatusLabel(record.statusStd)}*`
                     );

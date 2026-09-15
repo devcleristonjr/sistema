@@ -76,6 +76,11 @@ function parseIncludedRecordIdsFromRequest(reqBody) {
   );
 }
 
+function resolveEffectiveExcludedRecordIds(dataset, reqBody) {
+  const excludedRecordIds = parseExcludedRecordIdsFromRequest(reqBody);
+  return excludedRecordIds.length ? excludedRecordIds : (dataset.excludedRecordIds || []);
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', environment: config.environment });
 });
@@ -159,8 +164,7 @@ app.post('/api/datasets/:datasetId/query', requireAccessToken(config), async (re
       currentPage: req.body?.currentPage,
       pageSize: req.body?.pageSize
     });
-    const excludedRecordIds = parseExcludedRecordIdsFromRequest(req.body);
-    const effectiveExcludedRecordIds = excludedRecordIds.length ? excludedRecordIds : (dataset.excludedRecordIds || []);
+    const effectiveExcludedRecordIds = resolveEffectiveExcludedRecordIds(dataset, req.body);
     const updatedDataset = store.set(req.params.datasetId, {
       ...dataset,
       excludedRecordIds: effectiveExcludedRecordIds
@@ -187,8 +191,7 @@ app.post('/api/datasets/:datasetId/exports/excel', requireAccessToken(config), a
     }
 
     const filters = filterSchema.parse(req.body?.filters ?? {});
-    const excludedRecordIds = parseExcludedRecordIdsFromRequest(req.body);
-    const effectiveExcludedRecordIds = excludedRecordIds.length ? excludedRecordIds : (dataset.excludedRecordIds || []);
+    const effectiveExcludedRecordIds = resolveEffectiveExcludedRecordIds(dataset, req.body);
     const workbook = buildWorkbookFromDataset(dataset, filters, effectiveExcludedRecordIds);
     const buffer = Buffer.from(workbook, 'binary');
     const outputName = `planilha_tratada_${new Date().toISOString().slice(0, 10)}.xlsx`;
@@ -211,8 +214,7 @@ app.post('/api/datasets/:datasetId/exports/word', requireAccessToken(config), as
     }
 
     const filters = filterSchema.parse(req.body?.filters ?? {});
-    const excludedRecordIds = parseExcludedRecordIdsFromRequest(req.body);
-    const effectiveExcludedRecordIds = excludedRecordIds.length ? excludedRecordIds : (dataset.excludedRecordIds || []);
+    const effectiveExcludedRecordIds = resolveEffectiveExcludedRecordIds(dataset, req.body);
     const includedRecordIds = parseIncludedRecordIdsFromRequest(req.body);
     const report = await buildWordReport({
       dataset,

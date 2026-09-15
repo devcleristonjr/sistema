@@ -2,6 +2,14 @@ import fs from 'node:fs/promises';
 import XLSX from 'xlsx';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
+import {
+  cleanExportText,
+  fileNameSlug,
+  millions,
+  normalizeHeaderKey,
+  normalizeText,
+  sortLocale
+} from './report-utils.js';
 
 const STATUS_LABELS = {
   ATENDIDO: 'Atendido',
@@ -87,7 +95,7 @@ const DEFAULT_FILTERS = {
   search: ''
 };
 
-function sanitizeExcludedRecordIds(values) {
+function normalizeExcludedRecordIds(values) {
   if (!Array.isArray(values) || !values.length) return new Set();
   return new Set(
     values
@@ -96,30 +104,14 @@ function sanitizeExcludedRecordIds(values) {
   );
 }
 
-function applyExcludedRecords(records, excludedRecordIds) {
-  const excluded = sanitizeExcludedRecordIds(excludedRecordIds);
+function filterExcludedRecords(records, excludedRecordIds) {
+  const excluded = normalizeExcludedRecordIds(excludedRecordIds);
   if (!excluded.size) return records;
   return records.filter((record) => !excluded.has(Number(record.id)));
 }
 
-function sanitizeIncludedRecordIds(values) {
-  if (!Array.isArray(values) || !values.length) return new Set();
-  return new Set(
-    values
-      .map((value) => Number(value))
-      .filter((value) => Number.isInteger(value) && value > 0)
-  );
-}
-
-function applyIncludedRecords(records, includedRecordIds) {
-  const included = sanitizeIncludedRecordIds(includedRecordIds);
-  if (!included.size) return records;
-  return records.filter((record) => included.has(Number(record.id)));
-}
-
-function normalizeText(value, fallback = '') {
-  if (value === null || value === undefined) return fallback;
-  return String(value).trim();
+function applyExcludedRecords(records, excludedRecordIds) {
+  return filterExcludedRecords(records, excludedRecordIds);
 }
 
 function stripDiacritics(value) {
@@ -134,7 +126,7 @@ function normalizeNameKey(value) {
     .trim();
 }
 
-function canonicalizeDisplayName(value, fallback = '') {
+function normalizeDisplayName(value, fallback = '') {
   const raw = normalizeText(value, fallback);
   if (!raw) return fallback;
 
@@ -157,14 +149,14 @@ function normalizeMunicipioName(value, fallback = 'Não Especificado') {
   const raw = normalizeText(value, fallback);
   if (!raw || raw === fallback) return fallback;
   const key = normalizeNameKey(raw);
-  return key ? MUNICIPALITY_ALIASES[key] || canonicalizeDisplayName(raw, fallback) : fallback;
+  return key ? MUNICIPALITY_ALIASES[key] || normalizeDisplayName(raw, fallback) : fallback;
 }
 
 function normalizeTerritorioName(value, fallback = 'não consta') {
   const raw = normalizeText(value, fallback);
   if (!raw || raw === fallback) return fallback;
   const key = normalizeNameKey(raw);
-  return key ? TERRITORY_ALIASES[key] || canonicalizeDisplayName(raw, fallback) : fallback;
+  return key ? TERRITORY_ALIASES[key] || normalizeDisplayName(raw, fallback) : fallback;
 }
 
 function normalizeStatusValue(rawStatus) {
@@ -204,7 +196,7 @@ function isAttendedStatus(statusValue) {
   return ATTENDED_STATUS_SET.has(String(statusValue || '').toUpperCase());
 }
 
-function calculateReportMetrics(records) {
+function calculateSummaryMetrics(records) {
   const safeRecords = Array.isArray(records) ? records : [];
 
   const attendedRecords = safeRecords.filter((record) =>
@@ -265,30 +257,17 @@ function computePriority(val, statusStd) {
   return 'BAIXA';
 }
 
-function stringSimilarity(textA, textB) {
-  const normalizedA = String(textA || '').toLowerCase().replace(/[^\w\s]/g, '');
-  const normalizedB = String(textB || '').toLowerCase().replace(/[^\w\s]/g, '');
-  if (normalizedA === normalizedB) return 1;
-
-  const wordsA = new Set(normalizedA.split(/\s+/).filter(Boolean));
-  const wordsB = new Set(normalizedB.split(/\s+/).filter(Boolean));
-  const intersection = new Set([...wordsA].filter((word) => wordsB.has(word)));
-  const union = new Set([...wordsA, ...wordsB]);
-
-  return union.size ? intersection.size / union.size : 0;
-}
-
 function tokenizeForDuplicateCheck(text) {
   const normalized = normalizeNameKey(text);
   if (!normalized) return [];
   return normalized.split(' ').filter(Boolean);
 }
 
-function buildPairKey(leftIndex, rightIndex) {
+function buildDuplicatePairKey(leftIndex, rightIndex) {
   return leftIndex < rightIndex ? `${leftIndex}:${rightIndex}` : `${rightIndex}:${leftIndex}`;
 }
 
-function setSimilarity(wordsA, wordsB) {
+function calculateWordSimilarity(wordsA, wordsB) {
   if (!wordsA.size && !wordsB.size) return 1;
   if (!wordsA.size || !wordsB.size) return 0;
 
@@ -304,7 +283,7 @@ function setSimilarity(wordsA, wordsB) {
   return unionSize ? intersectionSize / unionSize : 0;
 }
 
-function hygienizeMunicipioAndTerritorioRows(rows) {
+function normalizeMunicipalityAndTerritoryRows(rows) {
   const seen = new Set();
   const nextRows = [];
 
@@ -409,11 +388,11 @@ function detectDuplicates(normalizedRecords) {
 
       candidatePositions.forEach((candidatePosition) => {
         const candidate = group[candidatePosition];
-        const pairKey = buildPairKey(current.index, candidate.index);
+        const pairKey = buildDuplicatePairKey(current.index, candidate.index);
         if (seenPairs.has(pairKey)) return;
         seenPairs.add(pairKey);
 
-        const similarity = setSimilarity(current.words, candidate.words);
+        const similarity = calculateWordSimilarity(current.words, candidate.words);
         if (similarity >= 0.75) {
           duplicates.push({
             item1: candidate.record,
@@ -480,10 +459,6 @@ function applyFilters(normalizedRecords, rawFilters = DEFAULT_FILTERS) {
   return { filters, filteredRecords };
 }
 
-function sortLocale(values) {
-  return [...values].sort((left, right) => left.localeCompare(right, 'pt-BR'));
-}
-
 function buildFilterOptions(normalizedRecords) {
   return {
     municipalities: sortLocale(new Set(normalizedRecords.map((record) => record.muni).filter(Boolean))),
@@ -500,17 +475,14 @@ function formatWhatsAppShortCurrency(value) {
   const amount = Number(value || 0);
   if (!Number.isFinite(amount) || amount <= 0) return 'R$ 0,00';
 
-  // Trata valores a partir de 1 Bilhão (ex: R$ 4,08 bi)
   if (amount >= 1000000000) {
     return `R$ ${(amount / 1000000000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} bi`;
   }
 
-  // Trata valores a partir de 1 Milhão (ex: R$ 250,50 mi)
   if (amount >= 1000000) {
     return `R$ ${(amount / 1000000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi`;
   }
 
-  // Trata valores a partir de 1 Mil (ex: R$ 500,0 mil)
   if (amount >= 1000) {
     return `R$ ${(amount / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mil`;
   }
@@ -593,69 +565,6 @@ function compareInvestmentRecords(left, right) {
   return normalizeText(left?.desc, '').localeCompare(normalizeText(right?.desc, ''), 'pt-BR');
 }
 
-function buildAttendedInvestmentHighlights(records, options = {}) {
-  const attendedRecords = records.filter((record) => isAttendedStatus(record.statusStd));
-  if (!attendedRecords.length) {
-    return {
-      highlights: [],
-      representedOrgans: 0,
-      capacity: 0
-    };
-  }
-
-  const baseCount = Number.isInteger(options.baseCount) ? options.baseCount : 8;
-  const extraCount = Number.isInteger(options.extraCount) ? options.extraCount : 6;
-  const hardCap = Number.isInteger(options.hardCap) ? options.hardCap : 30;
-
-  const recordsByOrgan = new Map();
-  attendedRecords.forEach((record) => {
-    const organ = normalizeText(record.organ, 'Órgão não informado');
-    if (!recordsByOrgan.has(organ)) recordsByOrgan.set(organ, []);
-    recordsByOrgan.get(organ).push(record);
-  });
-
-  recordsByOrgan.forEach((items, organ) => {
-    recordsByOrgan.set(organ, items.toSorted(compareInvestmentRecords));
-  });
-
-  const representatives = [];
-  const remaining = [];
-  const organEntries = [...recordsByOrgan.entries()].toSorted((left, right) => {
-    const leftTop = left[1][0] || {};
-    const rightTop = right[1][0] || {};
-    return compareInvestmentRecords(leftTop, rightTop);
-  });
-
-  organEntries.forEach(([, items]) => {
-    if (!items.length) return;
-    representatives.push(items[0]);
-    if (items.length > 1) remaining.push(...items.slice(1));
-  });
-
-  const representedOrgans = representatives.length;
-  const minimumTarget = Math.max(baseCount, representedOrgans);
-  const maximumTarget = Math.max(representedOrgans, Math.min(hardCap, minimumTarget + extraCount));
-
-  const selected = [...representatives];
-  const selectedRecordIds = new Set(selected.map((record) => record.id));
-
-  remaining
-    .toSorted(compareInvestmentRecords)
-    .forEach((record) => {
-      if (selected.length >= maximumTarget) return;
-      if (selectedRecordIds.has(record.id)) return;
-      selected.push(record);
-      selectedRecordIds.add(record.id);
-    });
-
-  const highlights = selected.toSorted(compareInvestmentRecords);
-  return {
-    highlights,
-    representedOrgans,
-    capacity: maximumTarget
-  };
-}
-
 function buildWhatsAppExecutiveSummary(records, filters) {
   if (!records.length) {
     return '*RESUMO DE INVESTIMENTOS E AÇÕES*\n\nNenhum registro encontrado para o recorte atual.';
@@ -670,10 +579,6 @@ function buildWhatsAppExecutiveSummary(records, filters) {
     lines = lines.concat(entries);
   };
 
-  const appendBlock = (entries) => {
-    lines = lines.concat(entries);
-  };
-
   if (filters.municipality !== 'ALL') {
     municipalityName = filters.municipality.toUpperCase();
   } else if (filters.territory !== 'ALL') {
@@ -684,7 +589,7 @@ function buildWhatsAppExecutiveSummary(records, filters) {
     municipalityName = `TERRITÓRIO ${territories[0]}`.toUpperCase();
   }
 
-  const metrics = calculateReportMetrics(records);
+  const metrics = calculateSummaryMetrics(records);
 
   const attendedRecords = metrics.attendedRecords;
   const openRecords = metrics.openRecords;
@@ -725,9 +630,6 @@ function buildWhatsAppExecutiveSummary(records, filters) {
       organA.localeCompare(organB, 'pt-BR')
     );
 
-  // ==========================================
-  // ATENDIDOS / PUBLICADOS AGRUPADOS POR ÓRGÃO
-  // ==========================================
   if (attendedRecords.length > 0) {
     appendLines(
       '',
@@ -773,9 +675,6 @@ function buildWhatsAppExecutiveSummary(records, filters) {
     });
   }
 
-  // ==========================================
-  // PLEITOS EM ABERTO
-  // ==========================================
   if (openRecords.length > 0) {
     const groupedOpenOrgans = {};
 
@@ -837,39 +736,22 @@ function buildWhatsAppExecutiveSummary(records, filters) {
     });
   }
 
-  // ==========================================
-  // RESUMO FINAL
-  // ==========================================
   appendLines(
     '',
     '━━━━━━━━━━━━━━━━━━',
     '*RESUMO*'
   );
 
-  appendBlock([
+  appendLines(
     `• *${attendedRecords.length}* pleitos atendidos/publicados`,
     `• *${openRecords.length}* pleitos em aberto`,
     `• *${formatBRL(attendedValue)}* em investimentos atendidos/publicados`
-  ]);
+  );
 
   return lines
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-}
-
-function cleanExportText(value) {
-  if (value === null || value === undefined) return '';
-  return String(value)
-    .replaceAll('\u00a0', ' ')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/\r\n|\r|\n/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function normalizeHeaderKey(value) {
-  return stripDiacritics(cleanExportText(value)).toLowerCase();
 }
 
 function parseDateForExport(value) {
@@ -1065,15 +947,6 @@ function createStyledCell(value, profile, isHeader = false, isAlt = false, isSta
   return cell;
 }
 
-function fileNameSlug(value) {
-  return String(value || 'municipio')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .toLowerCase();
-}
-
 function getScopeLabel(records, filters) {
   if (filters.municipality && filters.municipality !== 'ALL') return filters.municipality;
   if (filters.territory && filters.territory !== 'ALL') return `Território ${filters.territory}`;
@@ -1085,12 +958,8 @@ function getScopeLabel(records, filters) {
   throw new Error('Selecione um município ou território no filtro antes de gerar o relatório Word.');
 }
 
-function millions(value) {
-  return `R$ ${((Number(value) || 0) / 1000000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} milhões`;
-}
-
 function buildWordTemplateData(records, filters) {
-  const metrics = calculateReportMetrics(records);
+  const metrics = calculateSummaryMetrics(records);
 
   const attended = metrics.attendedRecords;
   const open = metrics.openRecords;
@@ -1114,8 +983,8 @@ function buildWordTemplateData(records, filters) {
     const group = groupedAttended.get(organKey);
     group.totalValue += Number(record.val || 0);
     group.itens.push({
-      valor: Number(record.val || 0) > 0 ? `• ${formatBRL(record.val)}` : '• VALOR NÃO INFORMADO',
-      desc: normalizeText(record.desc, 'Sem descrição')
+      valor: Number(record.val || 0) > 0 ? formatBRL(record.val) : 'VALOR NÃO INFORMADO',
+      desc: normalizeText(record.desc, 'Sem descrição').toLocaleUpperCase('pt-BR')
     });
   }
 
@@ -1174,18 +1043,6 @@ function prepareTemplateFormatting(zip) {
 
   let documentXml = documentFile.asText();
   documentXml = documentXml.replace(/🏷️/gu, '•').replace(/➡️/gu, '•');
-  documentXml = documentXml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paragraph) => {
-    const shouldBold = paragraph.includes('organ')
-      || paragraph.includes('orgao')
-      || paragraph.includes('totalItens')
-      || paragraph.includes('{total}');
-
-    if (!shouldBold) return paragraph;
-
-    return paragraph
-      .replace(/<w:r>(?!<w:rPr>)/g, '<w:r><w:rPr><w:b/><w:bCs/></w:rPr>')
-      .replace(/<w:rPr>[\s\S]*?<\/w:rPr>/g, (runProperties) => runProperties.includes('<w:b') ? runProperties : runProperties.replace('<w:rPr>', '<w:rPr><w:b/><w:bCs/>'));
-  });
 
   zip.file('word/document.xml', documentXml);
 }
@@ -1272,7 +1129,7 @@ export function normalizeDatasetFromMapping(dataset, mappings) {
     throw error;
   }
 
-  const hygienized = hygienizeMunicipioAndTerritorioRows(parsedList);
+  const hygienized = normalizeMunicipalityAndTerritoryRows(parsedList);
   const normalizedRecords = hygienized.map((item, index) => {
     const sourceAoaRowIndex = Number.isInteger(item.sourceAoaRowIndex)
       ? item.sourceAoaRowIndex
@@ -1344,7 +1201,7 @@ export function buildSnapshot(dataset, options) {
 
 export function buildWorkbookFromDataset(dataset, filters, excludedRecordIds = []) {
   const { filteredRecords } = applyFilters(dataset.normalizedRecords || [], filters);
-  const scopedRecords = applyExcludedRecords(filteredRecords, excludedRecordIds);
+  const scopedRecords = filterExcludedRecords(filteredRecords, excludedRecordIds);
   const sourceAoa = Array.isArray(dataset.aoa) ? dataset.aoa : [];
 
   if (!sourceAoa.length) {
@@ -1438,7 +1295,7 @@ export async function buildWordReport({ dataset, filters, excludedRecordIds = []
     filters
   );
 
-  const scopedRecords = applyExcludedRecords(
+  const scopedRecords = filterExcludedRecords(
     filteredRecords,
     excludedRecordIds
   );
@@ -1459,26 +1316,6 @@ export async function buildWordReport({ dataset, filters, excludedRecordIds = []
   });
 
   const reportData = buildWordTemplateData(scopedRecords, filters);
-  console.log(
-    '[WORD] destaques:',
-    JSON.stringify(reportData.destaques, null, 2)
-  );
-
-  console.log(
-    '[WORD] abertos:',
-    JSON.stringify(reportData.abertos, null, 2)
-  );
-
-  console.log(
-    '[WORD] primeira destaque:',
-    Object.keys(reportData.destaques?.[0] || {})
-  );
-
-  console.log(
-    '[WORD] primeiro aberto:',
-    Object.keys(reportData.abertos?.[0] || {})
-  );
-
   document.render(reportData);
 
   return {
