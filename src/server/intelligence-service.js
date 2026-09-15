@@ -813,7 +813,10 @@ function buildWhatsAppExecutiveSummary(records, filters) {
 
       items
         .slice()
-        .sort(compareWhatsAppRecords)
+        .sort(
+          (left, right) =>
+            Number(right?.val || 0) - Number(left?.val || 0)
+        )
         .forEach((record) => {
           const value = Number(record.val || 0);
 
@@ -1095,24 +1098,61 @@ function buildWordTemplateData(records, filters) {
   const attendedInvestment = metrics.attendedValue;
   const openInvestment = metrics.openValue;
 
-  const highlights = attended
-    .toSorted(compareInvestmentRecords)
-    .map((record) => ({
-      area: record.area,
-      organ: record.organ,
-      valor: record.val > 0 ? `• ${formatBRL(record.val)}` : '• VALOR NÃO INFORMADO',
-      desc: record.desc
-    }));
+  const groupedAttended = new Map();
+  for (const record of attended.toSorted(compareInvestmentRecords)) {
+    const organDisplay = normalizeText(record.organ, 'Órgão não informado');
+    const organKey = normalizeNameKey(organDisplay) || 'orgao-nao-informado';
 
-  const groups = new Map();
-  for (const record of open) {
-    if (!groups.has(record.organ)) groups.set(record.organ, []);
-    groups.get(record.organ).push({ descricao: record.desc, valor: formatBRL(record.val) });
+    if (!groupedAttended.has(organKey)) {
+      groupedAttended.set(organKey, {
+        organ: organDisplay,
+        totalValue: 0,
+        itens: []
+      });
+    }
+
+    const group = groupedAttended.get(organKey);
+    group.totalValue += Number(record.val || 0);
+    group.itens.push({
+      valor: Number(record.val || 0) > 0 ? `• ${formatBRL(record.val)}` : '• VALOR NÃO INFORMADO',
+      desc: normalizeText(record.desc, 'Sem descrição')
+    });
   }
 
-  const abertos = [...groups.entries()]
-    .sort((left, right) => left[0].localeCompare(right[0], 'pt-BR'))
-    .map(([orgao, itens]) => ({ orgao, itens }));
+  const highlights = [...groupedAttended.values()].map((group) => ({
+    organ: group.organ,
+    totalItens: group.itens.length,
+    total: formatBRL(group.totalValue),
+    itens: group.itens
+  }));
+
+  const groupedOpen = new Map();
+  for (const record of open.toSorted(compareInvestmentRecords)) {
+    const orgaoDisplay = normalizeText(record.organ, 'Órgão não informado');
+    const orgaoKey = normalizeNameKey(orgaoDisplay) || 'orgao-nao-informado';
+
+    if (!groupedOpen.has(orgaoKey)) {
+      groupedOpen.set(orgaoKey, {
+        orgao: orgaoDisplay,
+        totalValue: 0,
+        itens: []
+      });
+    }
+
+    const group = groupedOpen.get(orgaoKey);
+    group.totalValue += Number(record.val || 0);
+    group.itens.push({
+      descricao: normalizeText(record.desc, 'Sem descrição'),
+      valor: Number(record.val || 0) > 0 ? formatBRL(record.val) : 'VALOR NÃO INFORMADO'
+    });
+  }
+
+  const abertos = [...groupedOpen.values()].map((group) => ({
+    orgao: group.orgao,
+    totalItens: group.itens.length,
+    total: formatBRL(group.totalValue),
+    itens: group.itens
+  }));
 
   return {
     municipio: getScopeLabel(records, filters),
@@ -1135,7 +1175,12 @@ function prepareTemplateFormatting(zip) {
   let documentXml = documentFile.asText();
   documentXml = documentXml.replace(/🏷️/gu, '•').replace(/➡️/gu, '•');
   documentXml = documentXml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paragraph) => {
-    if (!paragraph.includes('valor') && !paragraph.includes('organ') && !paragraph.includes('orgao')) return paragraph;
+    const shouldBold = paragraph.includes('organ')
+      || paragraph.includes('orgao')
+      || paragraph.includes('totalItens')
+      || paragraph.includes('{total}');
+
+    if (!shouldBold) return paragraph;
 
     return paragraph
       .replace(/<w:r>(?!<w:rPr>)/g, '<w:r><w:rPr><w:b/><w:bCs/></w:rPr>')
@@ -1414,6 +1459,26 @@ export async function buildWordReport({ dataset, filters, excludedRecordIds = []
   });
 
   const reportData = buildWordTemplateData(scopedRecords, filters);
+  console.log(
+    '[WORD] destaques:',
+    JSON.stringify(reportData.destaques, null, 2)
+  );
+
+  console.log(
+    '[WORD] abertos:',
+    JSON.stringify(reportData.abertos, null, 2)
+  );
+
+  console.log(
+    '[WORD] primeira destaque:',
+    Object.keys(reportData.destaques?.[0] || {})
+  );
+
+  console.log(
+    '[WORD] primeiro aberto:',
+    Object.keys(reportData.abertos?.[0] || {})
+  );
+
   document.render(reportData);
 
   return {
